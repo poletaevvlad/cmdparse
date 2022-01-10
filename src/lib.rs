@@ -1,95 +1,12 @@
-pub use cmd_parser_derive::*;
+mod error;
 
+pub use cmd_parser_derive::*;
+pub use error::ParseError;
 use std::borrow::{Borrow, Cow};
-use std::fmt::{self, Display};
-use std::num::{IntErrorKind, ParseIntError};
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
-
-#[derive(Debug)]
-pub enum ParseErrorKind<'a> {
-    TokenParse(Cow<'a, str>, Option<Cow<'static, str>>),
-    TokenRequired,
-    UnexpectedToken(Cow<'a, str>),
-    UnbalancedParenthesis,
-    UnknownVariant(Cow<'a, str>),
-    UnknownAttribute(Cow<'a, str>),
-}
-
-#[derive(Debug)]
-pub struct ParseError<'a> {
-    pub kind: ParseErrorKind<'a>,
-    pub expected: Cow<'static, str>,
-}
-
-impl<'a> ParseErrorKind<'a> {
-    fn from_parse_int_error(token: Cow<'a, str>, error: ParseIntError) -> Self {
-        match error.kind() {
-            IntErrorKind::PosOverflow => {
-                ParseErrorKind::TokenParse(token, Some("too large".into()))
-            }
-            IntErrorKind::NegOverflow => {
-                ParseErrorKind::TokenParse(token, Some("too small".into()))
-            }
-            _ => ParseErrorKind::TokenParse(token, None),
-        }
-    }
-}
-
-impl<'a> ParseError<'a> {
-    pub fn into_static(self) -> ParseError<'static> {
-        ParseError {
-            kind: match self.kind {
-                ParseErrorKind::TokenParse(token, error) => {
-                    ParseErrorKind::TokenParse(Cow::Owned(token.into_owned()), error)
-                }
-                ParseErrorKind::TokenRequired => ParseErrorKind::TokenRequired,
-                ParseErrorKind::UnexpectedToken(token) => {
-                    ParseErrorKind::UnexpectedToken(Cow::Owned(token.into_owned()))
-                }
-                ParseErrorKind::UnbalancedParenthesis => ParseErrorKind::UnbalancedParenthesis,
-                ParseErrorKind::UnknownVariant(token) => {
-                    ParseErrorKind::UnknownVariant(Cow::Owned(token.into_owned()))
-                }
-                ParseErrorKind::UnknownAttribute(token) => {
-                    ParseErrorKind::UnknownAttribute(Cow::Owned(token.into_owned()))
-                }
-            },
-            expected: self.expected,
-        }
-    }
-}
-
-impl<'a> std::error::Error for ParseError<'a> {}
-
-impl<'a> fmt::Display for ParseError<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.kind {
-            ParseErrorKind::TokenParse(token, error) => {
-                f.write_fmt(format_args!("invalid {} \"{}\"", self.expected, token))?;
-                if let Some(error) = error {
-                    f.write_fmt(format_args!(": {}", error))?;
-                }
-                Ok(())
-            }
-            ParseErrorKind::TokenRequired => {
-                f.write_fmt(format_args!("expected {}", self.expected))
-            }
-            ParseErrorKind::UnexpectedToken(token) => {
-                f.write_fmt(format_args!("unexpected token: \"{}\"", token))
-            }
-            ParseErrorKind::UnbalancedParenthesis => f.write_str("unbalanced parenthesis"),
-            ParseErrorKind::UnknownVariant(variant) => {
-                f.write_fmt(format_args!("unknown variant: \"{}\"", variant))
-            }
-            ParseErrorKind::UnknownAttribute(attribute) => {
-                f.write_fmt(format_args!("unknown attribute: \"{}\"", attribute))
-            }
-        }
-    }
-}
 
 pub trait CmdParsable: Sized {
     fn parse_cmd(mut input: &str) -> Result<(Self, &str), ParseError<'_>> {
@@ -102,10 +19,7 @@ pub trait CmdParsable: Sized {
             } else {
                 let (token, _) = take_token(remaining);
                 if let Some(token) = token {
-                    return Err(ParseError {
-                        kind: ParseErrorKind::UnexpectedToken(token),
-                        expected: "".into(),
-                    });
+                    return Err(ParseError::unexpected_token(token));
                 }
             }
             Ok((value, remaining))
@@ -119,10 +33,7 @@ pub trait CmdParsable: Sized {
     fn parse_cmd_full(input: &str) -> Result<Self, ParseError<'_>> {
         let (cmd, remaining) = Self::parse_cmd(input)?;
         if let Some(token) = take_token(remaining).0 {
-            Err(ParseError {
-                kind: ParseErrorKind::UnexpectedToken(token),
-                expected: "".into(),
-            })
+            Err(ParseError::unexpected_token(token))
         } else {
             Ok(cmd)
         }
@@ -134,19 +45,17 @@ pub fn parse_cmd_token<T: FromStr>(
     expected: impl Into<Cow<'static, str>>,
 ) -> Result<(T, &str), ParseError<'_>>
 where
-    T::Err: Display,
+    T::Err: std::fmt::Display,
 {
     let (token, input) = take_token(input);
     match token.as_ref().map(|token| token.deref().parse()) {
         Some(Ok(value)) => Ok((value, input)),
-        Some(Err(error)) => Err(ParseError {
-            kind: ParseErrorKind::TokenParse(token.unwrap(), Some(error.to_string().into())),
-            expected: expected.into(),
-        }),
-        None => Err(ParseError {
-            kind: ParseErrorKind::TokenRequired,
-            expected: expected.into(),
-        }),
+        Some(Err(error)) => Err(ParseError::token_parse(
+            token.unwrap(),
+            Some(error.to_string().into()),
+            expected.into(),
+        )),
+        None => Err(ParseError::token_required(expected)),
     }
 }
 
@@ -155,43 +64,40 @@ impl CmdParsable for bool {
         let (token, remaining) = take_token(input);
         let token = match token {
             Some(token) => token,
-            None => {
-                return Err(ParseError {
-                    kind: ParseErrorKind::TokenRequired,
-                    expected: "boolean".into(),
-                })
-            }
+            None => return Err(ParseError::token_required("boolean")),
         };
         let value = match token.borrow() {
             "true" | "t" | "yes" | "y" => true,
             "false" | "f" | "no" | "n" => false,
-            _ => {
-                return Err(ParseError {
-                    kind: ParseErrorKind::TokenParse(token, None),
-                    expected: "boolean".into(),
-                })
-            }
+            _ => return Err(ParseError::token_parse(token, None, "boolean")),
         };
         Ok((value, remaining))
     }
 }
+
+use std::num::IntErrorKind;
 
 macro_rules! gen_parsable_int {
     ($type:ty) => {
         impl CmdParsable for $type {
             fn parse_cmd_raw(input: &str) -> Result<(Self, &str), ParseError<'_>> {
                 let (token, remaining) = take_token(input);
-                let result = match token {
-                    Some(token) => token
-                        .parse()
-                        .map(|num| (num, remaining))
-                        .map_err(|error| ParseErrorKind::from_parse_int_error(token, error)),
-                    None => Err(ParseErrorKind::TokenRequired),
-                };
-                result.map_err(|kind| ParseError {
-                    kind,
-                    expected: "integer".into(),
-                })
+                match token {
+                    Some(token) => {
+                        token
+                            .parse::<$type>()
+                            .map(|num| (num, remaining))
+                            .map_err(|error| {
+                                let error_label: Option<Cow<'static, str>> = match error.kind() {
+                                    IntErrorKind::PosOverflow => Some("too large".into()),
+                                    IntErrorKind::NegOverflow => Some("too small".into()),
+                                    _ => None,
+                                };
+                                ParseError::token_parse(token, error_label, "integer")
+                            })
+                    }
+                    None => Err(ParseError::token_required("integer")),
+                }
             }
         }
     };
@@ -215,17 +121,13 @@ macro_rules! gen_parsable_float {
         impl CmdParsable for $type {
             fn parse_cmd_raw(input: &str) -> Result<(Self, &str), ParseError<'_>> {
                 let (token, remaining) = take_token(input);
-                let result = match token {
+                match token {
                     Some(token) => token
                         .parse()
                         .map(|num| (num, remaining))
-                        .map_err(|_| ParseErrorKind::TokenParse(token, None)),
-                    None => Err(ParseErrorKind::TokenRequired),
-                };
-                result.map_err(|kind| ParseError {
-                    kind,
-                    expected: "real number".into(),
-                })
+                        .map_err(|_| ParseError::token_parse(token, None, "real number")),
+                    None => Err(ParseError::token_required("real number")),
+                }
             }
         }
     };
@@ -239,10 +141,7 @@ impl CmdParsable for String {
         let (token, remaining) = take_token(input);
         match token {
             Some(token) => Ok((token.into_owned(), remaining)),
-            None => Err(ParseError {
-                kind: ParseErrorKind::TokenRequired,
-                expected: "string".into(),
-            }),
+            None => Err(ParseError::token_required("string")),
         }
     }
 }
@@ -296,12 +195,7 @@ impl CmdParsable for Duration {
                 let mut parts = token.rsplitn(3, ':');
                 let mut seconds: f64 = match parts.next().unwrap().parse() {
                     Ok(seconds) => seconds,
-                    Err(_) => {
-                        return Err(ParseError {
-                            kind: ParseErrorKind::TokenParse(token, None),
-                            expected: "duration".into(),
-                        })
-                    }
+                    Err(_) => return Err(ParseError::token_parse(token, None, "duration")),
                 };
 
                 let mut multiplier = 60.0;
@@ -311,20 +205,12 @@ impl CmdParsable for Duration {
                             seconds += multiplier * part as f64;
                             multiplier *= 60.0;
                         }
-                        Err(_) => {
-                            return Err(ParseError {
-                                kind: ParseErrorKind::TokenParse(token, None),
-                                expected: "duration".into(),
-                            })
-                        }
+                        Err(_) => return Err(ParseError::token_parse(token, None, "duration")),
                     }
                 }
                 Ok((Duration::from_secs_f64(seconds), input))
             }
-            None => Err(ParseError {
-                kind: ParseErrorKind::TokenRequired,
-                expected: "duration".into(),
-            }),
+            None => Err(ParseError::token_required("duration")),
         }
     }
 }
@@ -337,10 +223,7 @@ impl CmdParsable for PathBuf {
                 let path = PathBuf::from(token.into_owned());
                 Ok((path, input))
             }
-            None => Err(ParseError {
-                kind: ParseErrorKind::TokenRequired,
-                expected: "path".into(),
-            }),
+            None => Err(ParseError::token_required("path")),
         }
     }
 }
