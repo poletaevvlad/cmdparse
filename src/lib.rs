@@ -9,34 +9,34 @@ use std::str::FromStr;
 use std::time::Duration;
 
 pub trait CmdParsable: Sized {
-    fn parse_cmd(mut input: &str) -> Result<(Self, &str), ParseError<'_>> {
-        input = skip_ws(input);
-
-        if let Some(input) = input.strip_prefix('(') {
-            let (value, mut remaining) = Self::parse_cmd_raw(input)?;
-            if remaining.starts_with(')') {
-                remaining = skip_ws(&remaining[1..]);
-            } else {
-                let (token, _) = take_token(remaining);
-                if let Some(token) = token {
-                    return Err(ParseError::unexpected_token(token));
-                }
-            }
-            Ok((value, remaining))
-        } else {
-            Self::parse_cmd_raw(input)
-        }
-    }
-
     fn parse_cmd_raw(input: &str) -> Result<(Self, &str), ParseError<'_>>;
 
     fn parse_cmd_full(input: &str) -> Result<Self, ParseError<'_>> {
-        let (cmd, remaining) = Self::parse_cmd(input)?;
+        let (cmd, remaining) = Self::parse_cmd_raw(input)?;
         if let Some(token) = take_token(remaining).0 {
             Err(ParseError::unexpected_token(token))
         } else {
             Ok(cmd)
         }
+    }
+}
+
+pub fn parse_inner<T: CmdParsable>(mut input: &str) -> Result<(T, &str), ParseError<'_>> {
+    input = skip_ws(input);
+
+    if let Some(input) = input.strip_prefix('(') {
+        let (value, mut remaining) = T::parse_cmd_raw(input)?;
+        if remaining.starts_with(')') {
+            remaining = skip_ws(&remaining[1..]);
+        } else {
+            let (token, _) = take_token(remaining);
+            if let Some(token) = token {
+                return Err(ParseError::unexpected_token(token));
+            }
+        }
+        Ok((value, remaining))
+    } else {
+        T::parse_cmd_raw(input)
     }
 }
 
@@ -150,7 +150,7 @@ impl<T: CmdParsable> CmdParsable for Vec<T> {
     fn parse_cmd_raw(mut input: &str) -> Result<(Self, &str), ParseError<'_>> {
         let mut result = Vec::new();
         while has_tokens(input) {
-            let (item, remaining) = T::parse_cmd(input)?;
+            let (item, remaining) = parse_inner(input)?;
             input = remaining;
             result.push(item);
         }
@@ -163,7 +163,7 @@ macro_rules! gen_parsable_tuple {
         impl<$($name: CmdParsable),*> CmdParsable for ($($name),*,) {
             #[allow(non_snake_case)]
             fn parse_cmd_raw(input: &str) -> Result<(Self, &str), ParseError<'_>> {
-                $(let ($name, input) = $name::parse_cmd(input)?;)*
+                $(let ($name, input) = parse_inner(input)?;)*
                 Ok((($($name),*,), input))
             }
         }
@@ -359,25 +359,27 @@ pub fn string_parse_all(input: &str) -> Result<(String, &str), ParseError<'_>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{take_token, CmdParsable};
+    use super::{parse_inner, take_token, CmdParsable};
 
     mod numbers {
         use super::*;
 
         #[test]
         fn parse_u8() {
-            assert_eq!(u8::parse_cmd("15 ").unwrap(), (15, ""));
+            assert_eq!(u8::parse_cmd_raw("15 ").unwrap(), (15, ""));
         }
 
         #[test]
         fn parse_f32() {
-            assert_eq!(f32::parse_cmd("14.0 ").unwrap(), (14.0, ""));
+            assert_eq!(f32::parse_cmd_raw("14.0 ").unwrap(), (14.0, ""));
         }
 
         #[test]
         fn parse_error() {
             assert_eq!(
-                &i16::parse_cmd("123456781234567").unwrap_err().to_string(),
+                &i16::parse_cmd_raw("123456781234567")
+                    .unwrap_err()
+                    .to_string(),
                 "invalid integer \"123456781234567\": too large"
             );
         }
@@ -385,7 +387,7 @@ mod tests {
         #[test]
         fn parse_error_no_description() {
             assert_eq!(
-                &i16::parse_cmd("abc").unwrap_err().to_string(),
+                &i16::parse_cmd_raw("abc").unwrap_err().to_string(),
                 "invalid integer \"abc\""
             );
         }
@@ -393,7 +395,7 @@ mod tests {
         #[test]
         fn parse_float_error() {
             assert_eq!(
-                &f32::parse_cmd("abc").unwrap_err().to_string(),
+                &f32::parse_cmd_raw("abc").unwrap_err().to_string(),
                 "invalid real number \"abc\""
             );
         }
@@ -404,20 +406,20 @@ mod tests {
 
         #[test]
         fn success() {
-            assert_eq!(bool::parse_cmd("true 1").unwrap(), (true, "1"));
-            assert_eq!(bool::parse_cmd("t 1").unwrap(), (true, "1"));
-            assert_eq!(bool::parse_cmd("yes 1").unwrap(), (true, "1"));
-            assert_eq!(bool::parse_cmd("y 1").unwrap(), (true, "1"));
-            assert_eq!(bool::parse_cmd("false 1").unwrap(), (false, "1"));
-            assert_eq!(bool::parse_cmd("f 1").unwrap(), (false, "1"));
-            assert_eq!(bool::parse_cmd("no 1").unwrap(), (false, "1"));
-            assert_eq!(bool::parse_cmd("n 1").unwrap(), (false, "1"));
+            assert_eq!(bool::parse_cmd_raw("true 1").unwrap(), (true, "1"));
+            assert_eq!(bool::parse_cmd_raw("t 1").unwrap(), (true, "1"));
+            assert_eq!(bool::parse_cmd_raw("yes 1").unwrap(), (true, "1"));
+            assert_eq!(bool::parse_cmd_raw("y 1").unwrap(), (true, "1"));
+            assert_eq!(bool::parse_cmd_raw("false 1").unwrap(), (false, "1"));
+            assert_eq!(bool::parse_cmd_raw("f 1").unwrap(), (false, "1"));
+            assert_eq!(bool::parse_cmd_raw("no 1").unwrap(), (false, "1"));
+            assert_eq!(bool::parse_cmd_raw("n 1").unwrap(), (false, "1"));
         }
 
         #[test]
         fn unknown_variant() {
             assert_eq!(
-                &bool::parse_cmd("unknown").unwrap_err().to_string(),
+                &bool::parse_cmd_raw("unknown").unwrap_err().to_string(),
                 "invalid boolean \"unknown\""
             );
         }
@@ -425,7 +427,7 @@ mod tests {
         #[test]
         fn missing() {
             assert_eq!(
-                &bool::parse_cmd("").unwrap_err().to_string(),
+                &bool::parse_cmd_raw("").unwrap_err().to_string(),
                 "expected boolean"
             );
         }
@@ -437,7 +439,7 @@ mod tests {
         #[test]
         fn parse_string() {
             assert_eq!(
-                String::parse_cmd("abc def").unwrap(),
+                String::parse_cmd_raw("abc def").unwrap(),
                 ("abc".to_string(), "def")
             );
         }
@@ -445,7 +447,7 @@ mod tests {
         #[test]
         fn missing_string() {
             assert_eq!(
-                &String::parse_cmd("").unwrap_err().to_string(),
+                &String::parse_cmd_raw("").unwrap_err().to_string(),
                 "expected string"
             );
         }
@@ -453,7 +455,9 @@ mod tests {
         #[test]
         fn unexpected_token() {
             assert_eq!(
-                &String::parse_cmd("(first second)").unwrap_err().to_string(),
+                parse_inner::<String>("(first second)")
+                    .unwrap_err()
+                    .to_string(),
                 "unexpected token: \"second\""
             );
         }
@@ -466,7 +470,7 @@ mod tests {
         #[test]
         fn success() {
             assert_eq!(
-                PathBuf::parse_cmd("/usr/bin/bash 1").unwrap(),
+                PathBuf::parse_cmd_raw("/usr/bin/bash 1").unwrap(),
                 (PathBuf::from("/usr/bin/bash".to_string()), "1")
             );
         }
@@ -474,7 +478,7 @@ mod tests {
         #[test]
         fn missing() {
             assert_eq!(
-                &PathBuf::parse_cmd("").unwrap_err().to_string(),
+                &PathBuf::parse_cmd_raw("").unwrap_err().to_string(),
                 "expected path"
             );
         }
@@ -482,7 +486,10 @@ mod tests {
 
     #[test]
     fn parse_box() {
-        assert_eq!(Box::<u8>::parse_cmd("10 20").unwrap(), (Box::new(10), "20"));
+        assert_eq!(
+            Box::<u8>::parse_cmd_raw("10 20").unwrap(),
+            (Box::new(10), "20")
+        );
     }
 
     mod take_token_tests {
@@ -607,28 +614,28 @@ mod tests {
 
         #[test]
         fn parse_vec() {
-            let (vector, remaining) = Vec::<u8>::parse_cmd("10 20 30 40 50").unwrap();
+            let (vector, remaining) = Vec::<u8>::parse_cmd_raw("10 20 30 40 50").unwrap();
             assert_eq!(vector, vec![10, 20, 30, 40, 50]);
             assert!(remaining.is_empty());
         }
 
         #[test]
         fn parse_vec_empty() {
-            let (vector, remaining) = Vec::<u8>::parse_cmd("").unwrap();
+            let (vector, remaining) = Vec::<u8>::parse_cmd_raw("").unwrap();
             assert_eq!(vector, vec![]);
             assert!(remaining.is_empty());
         }
 
         #[test]
         fn empty_parenthesis() {
-            let (vector, remaining) = Vec::<u8>::parse_cmd("() 10 20").unwrap();
+            let (vector, remaining) = parse_inner::<Vec<u8>>("() 10 20").unwrap();
             assert_eq!(vector, vec![]);
             assert_eq!(remaining, "10 20");
         }
 
         #[test]
         fn stops_at_parenthesis() {
-            let (vector, remaining) = Vec::<u8>::parse_cmd("(10 20) 30 40").unwrap();
+            let (vector, remaining) = parse_inner::<Vec<u8>>("(10 20) 30 40").unwrap();
             assert_eq!(vector, vec![10, 20]);
             assert_eq!(remaining, "30 40");
         }
@@ -639,12 +646,15 @@ mod tests {
 
         #[test]
         fn parse_some() {
-            assert_eq!(Option::<u32>::parse_cmd("10  a").unwrap(), (Some(10), "a"));
+            assert_eq!(
+                Option::<u32>::parse_cmd_raw("10  a").unwrap(),
+                (Some(10), "a")
+            );
         }
 
         #[test]
         fn parse_none() {
-            assert_eq!(Option::<u32>::parse_cmd("").unwrap(), (None, ""));
+            assert_eq!(Option::<u32>::parse_cmd_raw("").unwrap(), (None, ""));
         }
     }
 
@@ -654,7 +664,7 @@ mod tests {
         #[test]
         fn parse_tuples() {
             let (result, remaining) =
-                <(u8, u8, (u8, u8), (u8,))>::parse_cmd("10 20 30 40 50 60").unwrap();
+                <(u8, u8, (u8, u8), (u8,))>::parse_cmd_raw("10 20 30 40 50 60").unwrap();
             assert_eq!(result, (10, 20, (30, 40), (50,)));
             assert_eq!(remaining, "60");
         }
@@ -662,7 +672,9 @@ mod tests {
         #[test]
         fn too_many_values() {
             assert_eq!(
-                &<(u8, u8)>::parse_cmd("(10 20 30)").unwrap_err().to_string(),
+                parse_inner::<(u8, u8)>("(10 20 30)")
+                    .unwrap_err()
+                    .to_string(),
                 "unexpected token: \"30\""
             );
         }
@@ -670,7 +682,7 @@ mod tests {
         #[test]
         fn too_few_values() {
             assert_eq!(
-                &<(u8, u8)>::parse_cmd("(10)").unwrap_err().to_string(),
+                &<(u8, u8)>::parse_cmd_raw("(10)").unwrap_err().to_string(),
                 "expected integer"
             );
         }
@@ -682,25 +694,25 @@ mod tests {
 
         #[test]
         fn parse_seconds() {
-            let (result, _) = Duration::parse_cmd("10").unwrap();
+            let (result, _) = Duration::parse_cmd_raw("10").unwrap();
             assert_eq!(result, Duration::from_secs(10));
         }
 
         #[test]
         fn parse_seconds_decimal() {
-            let (result, _) = Duration::parse_cmd("10.4").unwrap();
+            let (result, _) = Duration::parse_cmd_raw("10.4").unwrap();
             assert_eq!(result, Duration::from_secs_f64(10.4));
         }
 
         #[test]
         fn parse_munites_seconds() {
-            let (result, _) = Duration::parse_cmd("14:10").unwrap();
+            let (result, _) = Duration::parse_cmd_raw("14:10").unwrap();
             assert_eq!(result, Duration::from_secs(14 * 60 + 10));
         }
 
         #[test]
         fn parse_hours_munites_seconds() {
-            let (result, _) = Duration::parse_cmd("2:14:10.4").unwrap();
+            let (result, _) = Duration::parse_cmd_raw("2:14:10.4").unwrap();
             assert_eq!(
                 result,
                 Duration::from_secs_f64(2.0 * 3600.0 + 14.0 * 60.0 + 10.4)
@@ -709,12 +721,12 @@ mod tests {
 
         #[test]
         fn too_many_parts() {
-            Duration::parse_cmd("4:2:14:10").unwrap_err();
+            Duration::parse_cmd_raw("4:2:14:10").unwrap_err();
         }
 
         #[test]
         fn invalid_symbol() {
-            Duration::parse_cmd("1s4:10").unwrap_err();
+            Duration::parse_cmd_raw("1s4:10").unwrap_err();
         }
     }
 
