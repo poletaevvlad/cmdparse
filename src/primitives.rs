@@ -104,9 +104,32 @@ where
     }
 }
 
+#[derive(Debug, Default)]
+pub struct StringParser;
+
+impl<Ctx> Parser<Ctx> for StringParser {
+    type Value = String;
+
+    fn create(_ctx: Ctx) -> Self {
+        StringParser
+    }
+
+    fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
+        let (token, remaining) = take_token(input);
+        match token {
+            Some(token) => ParseResult::Parsed(token.into_owned(), remaining),
+            None => ParseError::token_required("string").into(),
+        }
+    }
+
+    fn complete<'a>(&self, input: &'a str) -> CompletionResult<'a> {
+        complete_token_single(input)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{IntegerParser, RealParser};
+    use super::{IntegerParser, RealParser, StringParser};
     use crate::{CompletionResult, ParseError, ParseResult, Parser};
 
     mod integer_parser {
@@ -220,6 +243,28 @@ mod tests {
             assert_eq!(
                 Parser::<()>::parse(&parser, ""),
                 ParseResult::Failed(ParseError::token_required("real number"))
+            );
+        }
+    }
+
+    mod string_parser {
+        use super::*;
+
+        #[test]
+        fn parse_string() {
+            let parser = StringParser::create(());
+            assert_eq!(
+                Parser::<()>::parse(&parser, "abc def"),
+                ParseResult::Parsed("abc".to_string(), "def")
+            );
+        }
+
+        #[test]
+        fn parse_empty() {
+            let parser = StringParser::create(());
+            assert_eq!(
+                Parser::<()>::parse(&parser, ""),
+                ParseResult::Failed(ParseError::token_required("string")),
             );
         }
     }
