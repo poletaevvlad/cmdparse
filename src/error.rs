@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::fmt;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum ParseErrorKind<'a> {
     TokenParse(Cow<'a, str>, Option<Cow<'static, str>>),
     TokenRequired,
@@ -10,7 +10,7 @@ enum ParseErrorKind<'a> {
     UnknownAttribute(Cow<'a, str>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct ParseError<'a> {
     kind: ParseErrorKind<'a>,
     expected: Cow<'static, str>,

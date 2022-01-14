@@ -1,4 +1,6 @@
 mod error;
+mod primitives;
+mod utils;
 
 pub use cmd_parser_derive::*;
 pub use error::ParseError;
@@ -7,6 +9,33 @@ use std::ops::Deref;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
+pub use utils::*; // TODO
+
+#[derive(Debug, PartialEq)]
+pub enum ParseResult<'a, T> {
+    Unrecognized,
+    Parsed(T, &'a str),
+    Failed(ParseError<'a>),
+}
+
+impl<'a, T> From<ParseError<'a>> for ParseResult<'a, T> {
+    fn from(error: ParseError<'a>) -> Self {
+        ParseResult::Failed(error)
+    }
+}
+
+pub enum CompletionResult<'a> {
+    Consumed(&'a str),
+    Suggestions(Vec<Cow<'static, str>>),
+}
+
+trait Parser<Ctx> {
+    type Value;
+
+    fn create(ctx: Ctx) -> Self;
+    fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value>;
+    fn complete<'a>(&self, input: &'a str) -> CompletionResult<'a>;
+}
 
 pub trait CmdParsable: Sized {
     fn parse_cmd_raw(input: &str) -> Result<(Self, &str), ParseError<'_>>;
@@ -246,104 +275,6 @@ impl<T: CmdParsable> CmdParsable for Option<T> {
     }
 }
 
-pub fn skip_ws(mut input: &str) -> &str {
-    loop {
-        let mut chars = input.chars();
-        match chars.next() {
-            Some(ch) if ch.is_whitespace() => {
-                input = chars.as_str();
-            }
-            None | Some(_) => return input,
-        }
-    }
-}
-
-pub fn has_tokens(input: &str) -> bool {
-    !input.is_empty() && !input.starts_with(')') && !input.starts_with('#')
-}
-
-pub fn take_token(mut input: &str) -> (Option<Cow<'_, str>>, &str) {
-    if input.starts_with(')') || input.starts_with('#') {
-        return (None, input);
-    }
-
-    let token_start = input;
-    if input.starts_with('"') || input.starts_with('\'') {
-        let mut result = String::new();
-        let mut chars = input.chars();
-        let quote_ch = chars.next().unwrap();
-        let mut escaped = false;
-        for ch in &mut chars {
-            if escaped {
-                result.push(ch);
-                escaped = false;
-            } else {
-                match ch {
-                    ch if ch == quote_ch => break,
-                    '\\' => escaped = true,
-                    ch => result.push(ch),
-                }
-            }
-        }
-        (Some(result.into()), skip_ws(chars.as_str()))
-    } else {
-        loop {
-            let mut chars = input.chars();
-            match chars.next() {
-                Some(ch)
-                    if !ch.is_whitespace() && ch != '"' && ch != '\'' && ch != ')' && ch != '#' =>
-                {
-                    input = chars.as_str();
-                }
-                _ => break,
-            }
-        }
-        let token = &token_start[..(token_start.len() - input.len())];
-        if !token.is_empty() {
-            (Some(Cow::Borrowed(token)), skip_ws(input))
-        } else {
-            (None, skip_ws(input))
-        }
-    }
-}
-
-fn skip_token(mut input: &str) -> &str {
-    if input.starts_with(')') || input.starts_with('#') {
-        return input;
-    }
-
-    if input.starts_with('"') || input.starts_with('\'') {
-        let mut chars = input.chars();
-        let quote_ch = chars.next().unwrap();
-        let mut escaped = false;
-        for ch in &mut chars {
-            if !escaped {
-                match ch {
-                    ch if ch == quote_ch => break,
-                    '\\' => escaped = true,
-                    _ => {}
-                }
-            } else {
-                escaped = false;
-            }
-        }
-        skip_ws(chars.as_str())
-    } else {
-        loop {
-            let mut chars = input.chars();
-            match chars.next() {
-                Some(ch)
-                    if !ch.is_whitespace() && ch != '"' && ch != '\'' && ch != ')' && ch != '#' =>
-                {
-                    input = chars.as_str();
-                }
-                _ => break,
-            }
-        }
-        skip_ws(input)
-    }
-}
-
 pub fn string_parse_all(input: &str) -> Result<(String, &str), ParseError<'_>> {
     let mut remaining = input;
     loop {
@@ -359,47 +290,7 @@ pub fn string_parse_all(input: &str) -> Result<(String, &str), ParseError<'_>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_inner, take_token, CmdParsable};
-
-    mod numbers {
-        use super::*;
-
-        #[test]
-        fn parse_u8() {
-            assert_eq!(u8::parse_cmd_raw("15 ").unwrap(), (15, ""));
-        }
-
-        #[test]
-        fn parse_f32() {
-            assert_eq!(f32::parse_cmd_raw("14.0 ").unwrap(), (14.0, ""));
-        }
-
-        #[test]
-        fn parse_error() {
-            assert_eq!(
-                &i16::parse_cmd_raw("123456781234567")
-                    .unwrap_err()
-                    .to_string(),
-                "invalid integer \"123456781234567\": too large"
-            );
-        }
-
-        #[test]
-        fn parse_error_no_description() {
-            assert_eq!(
-                &i16::parse_cmd_raw("abc").unwrap_err().to_string(),
-                "invalid integer \"abc\""
-            );
-        }
-
-        #[test]
-        fn parse_float_error() {
-            assert_eq!(
-                &f32::parse_cmd_raw("abc").unwrap_err().to_string(),
-                "invalid real number \"abc\""
-            );
-        }
-    }
+    use super::{parse_inner, CmdParsable};
 
     mod parse_boolean {
         use super::*;
@@ -490,123 +381,6 @@ mod tests {
             Box::<u8>::parse_cmd_raw("10 20").unwrap(),
             (Box::new(10), "20")
         );
-    }
-
-    mod take_token_tests {
-        use super::*;
-        use crate::skip_token;
-        use std::borrow::Cow;
-
-        #[test]
-        fn empty_string() {
-            assert_eq!(take_token(""), (None, ""));
-            assert_eq!(skip_token(""), "");
-        }
-
-        #[test]
-        fn whitespace_only() {
-            assert_eq!(take_token("   "), (None, ""));
-            assert_eq!(skip_token("   "), "");
-        }
-
-        #[test]
-        fn comment() {
-            assert_eq!(take_token("#comment"), (None, "#comment"));
-            assert_eq!(skip_token("#comment"), "#comment");
-        }
-
-        #[test]
-        fn takes_entire_string() {
-            assert_eq!(take_token("abcdef"), (Some(Cow::Borrowed("abcdef")), ""));
-            assert_eq!(skip_token("abcdef"), "");
-        }
-
-        #[test]
-        fn takes_until_comment() {
-            assert_eq!(
-                take_token("abcdef#comment"),
-                (Some(Cow::Borrowed("abcdef")), "#comment")
-            );
-            assert_eq!(skip_token("abcdef#comment"), "#comment");
-        }
-
-        #[test]
-        fn takes_entire_string_with_whitespaces() {
-            assert_eq!(take_token("abcdef  "), (Some(Cow::Borrowed("abcdef")), ""));
-            assert_eq!(skip_token("abcdef  "), "");
-        }
-
-        #[test]
-        fn tokenizes_multiple() {
-            let mut input = "first second third";
-            let mut tokens = Vec::new();
-            loop {
-                let (token, remaining) = take_token(input);
-                let remaining2 = skip_token(input);
-                assert_eq!(remaining, remaining2);
-                if let Some(token) = token {
-                    tokens.push(token);
-                } else {
-                    break;
-                }
-                input = remaining;
-            }
-            assert_eq!(tokens, vec!["first", "second", "third"]);
-        }
-
-        #[test]
-        fn empty_quoted_string() {
-            assert_eq!(take_token("''  a"), (Some(Cow::Owned(String::new())), "a"));
-            assert_eq!(skip_token("''  a"), "a");
-            assert_eq!(
-                take_token("\"\"  a"),
-                (Some(Cow::Owned(String::new())), "a")
-            );
-            assert_eq!(skip_token("\"\"  a"), "a");
-        }
-
-        #[test]
-        fn non_empty_quoted_string() {
-            assert_eq!(
-                take_token("'abc \"def'  a"),
-                (Some(Cow::Owned("abc \"def".to_string())), "a")
-            );
-            assert_eq!(skip_token("'abc \"def'  a"), "a");
-
-            assert_eq!(
-                take_token("\"abc 'def\"  a"),
-                (Some(Cow::Owned("abc 'def".to_string())), "a")
-            );
-            assert_eq!(skip_token("\"abc 'def\"  a"), "a");
-        }
-
-        #[test]
-        fn string_with_escape_sequence() {
-            assert_eq!(
-                take_token(r#"'"\'\\\a'  a"#),
-                (Some(Cow::Owned(r#""'\a"#.to_string())), "a")
-            );
-            assert_eq!(skip_token(r#"'"\'\\\a'  a"#), "a");
-            assert_eq!(
-                take_token(r#""\"'\\\a"  a"#),
-                (Some(Cow::Owned(r#""'\a"#.to_string())), "a")
-            );
-            assert_eq!(skip_token(r#""\"'\\\a"  a"#), "a");
-        }
-
-        #[test]
-        fn token_followed_by_string() {
-            assert_eq!(
-                take_token("abc\"def\""),
-                (Some(Cow::Borrowed("abc")), "\"def\"")
-            );
-            assert_eq!(skip_token("abc\"def\""), "\"def\"");
-            assert_eq!(
-                take_token("abc'def'"),
-                (Some(Cow::Borrowed("abc")), "'def'")
-            );
-            assert_eq!(skip_token("abc'def'"), "'def'");
-        }
     }
 
     mod parse_vec {
