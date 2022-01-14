@@ -1,7 +1,7 @@
 use super::{CompletionResult, Parser};
 use crate::utils::{has_tokens, skip_token_no_ws, skip_ws, take_token};
 use crate::{Parsable, ParseError, ParseResult};
-use std::borrow::Cow;
+use std::borrow::{Borrow, Cow};
 use std::fmt;
 use std::marker::PhantomData;
 use std::num::{IntErrorKind, ParseFloatError, ParseIntError};
@@ -149,9 +149,40 @@ impl<Ctx> Parser<Ctx> for StringParser {
     }
 }
 
+impl<Ctx> Parsable<Ctx> for StringParser {
+    type Parser = StringParser;
+}
+
+#[derive(Debug, Default)]
+pub struct BooleanParser;
+
+impl<Ctx> Parser<Ctx> for BooleanParser {
+    type Value = bool;
+
+    fn create(_ctx: Ctx) -> Self {
+        BooleanParser
+    }
+
+    fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
+        let (token, remaining) = take_token(input);
+        match token {
+            Some(token) => match token.borrow() {
+                "true" | "t" | "yes" | "y" => ParseResult::Parsed(true, remaining),
+                "false" | "f" | "no" | "n" => ParseResult::Parsed(false, remaining),
+                _ => ParseResult::Failed(ParseError::token_parse(token, None, "boolean")),
+            },
+            None => ParseError::token_required("boolean").into(),
+        }
+    }
+
+    fn complete<'a>(&self, _input: &'a str) -> CompletionResult<'a> {
+        todo!()
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{IntegerParser, RealParser, StringParser};
+    use super::{BooleanParser, IntegerParser, RealParser, StringParser};
     use crate::{CompletionResult, ParseError, ParseResult, Parser};
 
     mod integer_parser {
@@ -287,6 +318,65 @@ mod tests {
             assert_eq!(
                 Parser::<()>::parse(&parser, ""),
                 ParseResult::Failed(ParseError::token_required("string")),
+            );
+        }
+    }
+
+    mod boolean_parser {
+        use super::*;
+
+        #[test]
+        fn parse_success() {
+            let parser = BooleanParser::create(());
+            assert_eq!(
+                Parser::<()>::parse(&parser, "true 1"),
+                ParseResult::Parsed(true, "1")
+            );
+            assert_eq!(
+                Parser::<()>::parse(&parser, "t 1"),
+                ParseResult::Parsed(true, "1")
+            );
+            assert_eq!(
+                Parser::<()>::parse(&parser, "yes 1"),
+                ParseResult::Parsed(true, "1")
+            );
+            assert_eq!(
+                Parser::<()>::parse(&parser, "y 1"),
+                ParseResult::Parsed(true, "1")
+            );
+            assert_eq!(
+                Parser::<()>::parse(&parser, "false 1"),
+                ParseResult::Parsed(false, "1")
+            );
+            assert_eq!(
+                Parser::<()>::parse(&parser, "f 1"),
+                ParseResult::Parsed(false, "1")
+            );
+            assert_eq!(
+                Parser::<()>::parse(&parser, "no 1"),
+                ParseResult::Parsed(false, "1")
+            );
+            assert_eq!(
+                Parser::<()>::parse(&parser, "n 1"),
+                ParseResult::Parsed(false, "1")
+            );
+        }
+
+        #[test]
+        fn parse_unknown() {
+            let parser = BooleanParser::create(());
+            assert_eq!(
+                Parser::<()>::parse(&parser, "unknown"),
+                ParseResult::Failed(ParseError::token_parse("unknown".into(), None, "boolean"))
+            );
+        }
+
+        #[test]
+        fn parse_empty() {
+            let parser = BooleanParser::create(());
+            assert_eq!(
+                Parser::<()>::parse(&parser, ""),
+                ParseResult::Failed(ParseError::token_required("boolean"))
             );
         }
     }
