@@ -1,3 +1,4 @@
+use crate::CompletionResult;
 use std::borrow::Cow;
 
 pub fn has_tokens(input: &str) -> bool {
@@ -16,7 +17,7 @@ pub fn skip_ws(mut input: &str) -> &str {
     }
 }
 
-pub fn take_token(mut input: &str) -> (Option<Cow<'_, str>>, &str) {
+pub fn take_token_no_ws(mut input: &str) -> (Option<Cow<'_, str>>, &str) {
     if input.starts_with(')') || input.starts_with('#') {
         return (None, input);
     }
@@ -39,7 +40,7 @@ pub fn take_token(mut input: &str) -> (Option<Cow<'_, str>>, &str) {
                 }
             }
         }
-        (Some(result.into()), skip_ws(chars.as_str()))
+        (Some(result.into()), chars.as_str())
     } else {
         loop {
             let mut chars = input.chars();
@@ -54,11 +55,16 @@ pub fn take_token(mut input: &str) -> (Option<Cow<'_, str>>, &str) {
         }
         let token = &token_start[..(token_start.len() - input.len())];
         if !token.is_empty() {
-            (Some(Cow::Borrowed(token)), skip_ws(input))
+            (Some(Cow::Borrowed(token)), input)
         } else {
-            (None, skip_ws(input))
+            (None, input)
         }
     }
+}
+
+pub fn take_token(input: &str) -> (Option<Cow<'_, str>>, &str) {
+    let (token, remaining) = take_token_no_ws(input);
+    (token, skip_ws(remaining))
 }
 
 pub fn skip_token_no_ws(mut input: &str) -> &str {
@@ -100,6 +106,28 @@ pub fn skip_token_no_ws(mut input: &str) -> &str {
 
 pub fn skip_token(input: &str) -> &str {
     skip_ws(skip_token_no_ws(input))
+}
+
+/// Computes suggestions from a list of string slices. The list **must** be sorted.
+pub fn complete_enum<'a>(input: &'a str, variants: &[&'static str]) -> CompletionResult<'a> {
+    let (token, remaining) = take_token_no_ws(input);
+    match token {
+        Some(_) if !remaining.is_empty() => CompletionResult::Consumed(skip_ws(remaining)),
+        Some(token) => {
+            let index = variants
+                .binary_search(&token.as_ref())
+                .unwrap_or_else(|idx| idx);
+            let suggestions = variants[index..]
+                .iter()
+                .map(|variant| variant.strip_prefix(token.as_ref()))
+                .take_while(Option::is_some)
+                .map(|suggestion| Cow::Borrowed(suggestion.unwrap())) // Iterator::take_while is unstable, unwrap is safe, Nones are filtered out
+                .filter(|suggestion| !suggestion.is_empty())
+                .collect();
+            CompletionResult::Suggestions(suggestions)
+        }
+        None => CompletionResult::empty(),
+    }
 }
 
 #[cfg(test)]
@@ -229,5 +257,63 @@ mod tests {
             (Some(Cow::Borrowed("abc")), "'def'")
         );
         assert_eq!(skip_token("abc'def'"), "'def'");
+    }
+
+    mod complete_enum_tests {
+        use super::*;
+
+        const VARIANTS: &[&str] = &["back", "bat", "before", "end", "endianness", "ending"];
+
+        #[test]
+        fn empty_string() {
+            assert_eq!(complete_enum("", VARIANTS), CompletionResult::empty());
+        }
+
+        #[test]
+        fn consumed() {
+            assert_eq!(
+                complete_enum("unknown another", VARIANTS),
+                CompletionResult::Consumed("another")
+            );
+        }
+
+        #[test]
+        fn consumed_space() {
+            assert_eq!(
+                complete_enum("unknown ", VARIANTS),
+                CompletionResult::Consumed("")
+            );
+        }
+
+        macro_rules! assert_completion {
+            ($input:literal, [$($expected:literal),*]) => {
+                assert_eq!(
+                    complete_enum($input, VARIANTS),
+                    CompletionResult::Suggestions(vec![$($expected.into()),*])
+                );
+            };
+        }
+
+        #[test]
+        fn completion() {
+            assert_completion!("apricot", []);
+            assert_completion!("cat", []);
+            assert_completion!("ferrot", []);
+
+            assert_completion!("b", ["ack", "at", "efore"]);
+            assert_completion!("ba", ["ck", "t"]);
+            assert_completion!("bac", ["k"]);
+            assert_completion!("back", []);
+            assert_completion!("backs", []);
+            assert_completion!("be", ["fore"]);
+            assert_completion!("bet", []);
+
+            assert_completion!("e", ["nd", "ndianness", "nding"]);
+            assert_completion!("end", ["ianness", "ing"]);
+            assert_completion!("endi", ["anness", "ng"]);
+            assert_completion!("ending", []);
+            assert_completion!("endings", []);
+            assert_completion!("endianness", []);
+        }
     }
 }
