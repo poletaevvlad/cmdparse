@@ -1,6 +1,6 @@
 use super::{CompletionResult, Parser};
 use crate::utils::{has_tokens, skip_token_no_ws, skip_ws, take_token};
-use crate::{Parsable, ParseError, ParseResult};
+use crate::{complete_enum, Parsable, ParseError, ParseResult};
 use std::borrow::{Borrow, Cow};
 use std::fmt;
 use std::marker::PhantomData;
@@ -175,9 +175,13 @@ impl<Ctx> Parser<Ctx> for BooleanParser {
         }
     }
 
-    fn complete<'a>(&self, _input: &'a str) -> CompletionResult<'a> {
-        todo!()
+    fn complete<'a>(&self, input: &'a str) -> CompletionResult<'a> {
+        complete_enum(input, &["false", "no", "true", "yes"])
     }
+}
+
+impl<Ctx> Parsable<Ctx> for bool {
+    type Parser = BooleanParser;
 }
 
 #[cfg(test)]
@@ -377,6 +381,35 @@ mod tests {
             assert_eq!(
                 Parser::<()>::parse(&parser, ""),
                 ParseResult::Failed(ParseError::token_required("boolean"))
+            );
+        }
+
+        #[test]
+        fn suggestions() {
+            let parser = BooleanParser::create(());
+            assert_eq!(
+                Parser::<()>::complete(&parser, "t"),
+                CompletionResult::Suggestions(vec!["rue".into()])
+            );
+            assert_eq!(
+                Parser::<()>::complete(&parser, "f"),
+                CompletionResult::Suggestions(vec!["alse".into()])
+            );
+            assert_eq!(
+                Parser::<()>::complete(&parser, "y"),
+                CompletionResult::Suggestions(vec!["es".into()])
+            );
+            assert_eq!(
+                Parser::<()>::complete(&parser, "n"),
+                CompletionResult::Suggestions(vec!["o".into()])
+            );
+            assert_eq!(
+                Parser::<()>::complete(&parser, "m"),
+                CompletionResult::empty()
+            );
+            assert_eq!(
+                Parser::<()>::complete(&parser, "false next"),
+                CompletionResult::Consumed("next")
             );
         }
     }
