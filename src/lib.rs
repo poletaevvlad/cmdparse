@@ -44,6 +44,14 @@ trait Parser<Ctx> {
     fn complete<'a>(&self, input: &'a str) -> CompletionResult<'a>;
 }
 
+trait Parsable<Ctx> {
+    type Parser: Parser<Ctx>;
+
+    fn new_parser(ctx: Ctx) -> Self::Parser {
+        Self::Parser::create(ctx)
+    }
+}
+
 pub trait CmdParsable: Sized {
     fn parse_cmd_raw(input: &str) -> Result<(Self, &str), ParseError<'_>>;
 

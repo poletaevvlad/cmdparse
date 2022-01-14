@@ -1,6 +1,6 @@
 use super::{CompletionResult, Parser};
 use crate::utils::{has_tokens, skip_token_no_ws, skip_ws, take_token};
-use crate::{ParseError, ParseResult};
+use crate::{Parsable, ParseError, ParseResult};
 use std::borrow::Cow;
 use std::fmt;
 use std::marker::PhantomData;
@@ -41,7 +41,27 @@ macro_rules! no_state_parser {
     };
 }
 
+macro_rules! no_state_parsable {
+    ($type:ty, $parser:ident) => {
+        impl<Ctx> Parsable<Ctx> for $type {
+            type Parser = $parser<$type>;
+        }
+    };
+}
+
 no_state_parser!(IntegerParser);
+no_state_parsable!(i8, IntegerParser);
+no_state_parsable!(u8, IntegerParser);
+no_state_parsable!(i16, IntegerParser);
+no_state_parsable!(u16, IntegerParser);
+no_state_parsable!(i32, IntegerParser);
+no_state_parsable!(u32, IntegerParser);
+no_state_parsable!(i64, IntegerParser);
+no_state_parsable!(u64, IntegerParser);
+no_state_parsable!(i128, IntegerParser);
+no_state_parsable!(u128, IntegerParser);
+no_state_parsable!(isize, IntegerParser);
+no_state_parsable!(usize, IntegerParser);
 
 impl<T, Ctx> Parser<Ctx> for IntegerParser<T>
 where
@@ -77,6 +97,8 @@ where
 }
 
 no_state_parser!(RealParser);
+no_state_parsable!(f32, RealParser);
+no_state_parsable!(f64, RealParser);
 
 impl<T, Ctx> Parser<Ctx> for RealParser<T>
 where
