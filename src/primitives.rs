@@ -4,7 +4,7 @@ use crate::{ParseError, ParseResult};
 use std::borrow::Cow;
 use std::fmt;
 use std::marker::PhantomData;
-use std::num::{IntErrorKind, ParseIntError};
+use std::num::{IntErrorKind, ParseFloatError, ParseIntError};
 use std::str::FromStr;
 
 fn complete_token_single(input: &str) -> CompletionResult<'_> {
@@ -18,24 +18,30 @@ fn complete_token_single(input: &str) -> CompletionResult<'_> {
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct IntegerParser<T> {
-    _phantom: PhantomData<T>,
-}
-
-impl<T> fmt::Debug for IntegerParser<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("IntegerParser").finish()
-    }
-}
-
-impl<T> Default for IntegerParser<T> {
-    fn default() -> Self {
-        Self {
-            _phantom: Default::default(),
+macro_rules! no_state_parser {
+    ($name:ident) => {
+        #[derive(Clone, Copy)]
+        pub struct $name<T> {
+            _phantom: PhantomData<T>,
         }
-    }
+
+        impl<T> fmt::Debug for $name<T> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.debug_struct(stringify!($name)).finish()
+            }
+        }
+
+        impl<T> Default for $name<T> {
+            fn default() -> Self {
+                $name {
+                    _phantom: Default::default(),
+                }
+            }
+        }
+    };
 }
+
+no_state_parser!(IntegerParser);
 
 impl<T, Ctx> Parser<Ctx> for IntegerParser<T>
 where
@@ -44,7 +50,7 @@ where
     type Value = T;
 
     fn create(_ctx: Ctx) -> Self {
-        IntegerParser::default()
+        Self::default()
     }
 
     fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
@@ -70,14 +76,40 @@ where
     }
 }
 
+no_state_parser!(RealParser);
+
+impl<T, Ctx> Parser<Ctx> for RealParser<T>
+where
+    T: FromStr<Err = ParseFloatError>,
+{
+    type Value = T;
+
+    fn create(_ctx: Ctx) -> Self {
+        Self::default()
+    }
+
+    fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
+        let (token, remaining) = take_token(input);
+        match token {
+            Some(token) => match token.parse() {
+                Ok(value) => ParseResult::Parsed(value, remaining),
+                Err(_) => ParseResult::Failed(ParseError::token_parse(token, None, "real number")),
+            },
+            None => ParseError::token_required("real number").into(),
+        }
+    }
+
+    fn complete<'a>(&self, input: &'a str) -> CompletionResult<'a> {
+        complete_token_single(input)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::IntegerParser;
-    use crate::{ParseError, ParseResult, Parser};
+    use super::{IntegerParser, RealParser};
+    use crate::{CompletionResult, ParseError, ParseResult, Parser};
 
     mod integer_parser {
-        use crate::CompletionResult;
-
         use super::*;
 
         #[test]
@@ -152,6 +184,42 @@ mod tests {
             assert_eq!(
                 Parser::<()>::complete(&parser, "123 456"),
                 CompletionResult::Consumed("456"),
+            );
+        }
+    }
+
+    mod real_parser {
+        use super::*;
+
+        #[test]
+        fn debug() {
+            assert_eq!(&format!("{:?}", RealParser::<f64>::default()), "RealParser");
+        }
+
+        #[test]
+        fn parse_f64() {
+            let parser = RealParser::create(());
+            assert_eq!(
+                Parser::<()>::parse(&parser, "3.2 abc"),
+                ParseResult::Parsed(3.2, "abc")
+            );
+        }
+
+        #[test]
+        fn parse_error() {
+            let parser = RealParser::<f64>::create(());
+            assert_eq!(
+                Parser::<()>::parse(&parser, "abc"),
+                ParseResult::Failed(ParseError::token_parse("abc".into(), None, "real number"))
+            );
+        }
+
+        #[test]
+        fn parse_error_empty_string() {
+            let parser = RealParser::<f64>::create(());
+            assert_eq!(
+                Parser::<()>::parse(&parser, ""),
+                ParseResult::Failed(ParseError::token_required("real number"))
             );
         }
     }
