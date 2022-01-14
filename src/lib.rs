@@ -24,9 +24,16 @@ impl<'a, T> From<ParseError<'a>> for ParseResult<'a, T> {
     }
 }
 
+#[derive(Debug, PartialEq)]
 pub enum CompletionResult<'a> {
     Consumed(&'a str),
     Suggestions(Vec<Cow<'static, str>>),
+}
+
+impl<'a> CompletionResult<'a> {
+    pub(crate) const fn empty() -> Self {
+        CompletionResult::Suggestions(Vec::new())
+    }
 }
 
 trait Parser<Ctx> {

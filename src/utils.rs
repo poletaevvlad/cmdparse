@@ -61,7 +61,7 @@ pub fn take_token(mut input: &str) -> (Option<Cow<'_, str>>, &str) {
     }
 }
 
-pub fn skip_token(mut input: &str) -> &str {
+pub fn skip_token_no_ws(mut input: &str) -> &str {
     if input.starts_with(')') || input.starts_with('#') {
         return input;
     }
@@ -81,7 +81,7 @@ pub fn skip_token(mut input: &str) -> &str {
                 escaped = false;
             }
         }
-        skip_ws(chars.as_str())
+        chars.as_str()
     } else {
         loop {
             let mut chars = input.chars();
@@ -94,8 +94,12 @@ pub fn skip_token(mut input: &str) -> &str {
                 _ => break,
             }
         }
-        skip_ws(input)
+        input
     }
+}
+
+pub fn skip_token(input: &str) -> &str {
+    skip_ws(skip_token_no_ws(input))
 }
 
 #[cfg(test)]
@@ -114,24 +118,28 @@ mod tests {
     #[test]
     fn empty_string() {
         assert_eq!(take_token(""), (None, ""));
+        assert_eq!(skip_token_no_ws(""), "");
         assert_eq!(skip_token(""), "");
     }
 
     #[test]
     fn whitespace_only() {
         assert_eq!(take_token("   "), (None, ""));
+        assert_eq!(skip_token_no_ws("   "), "   ");
         assert_eq!(skip_token("   "), "");
     }
 
     #[test]
     fn comment() {
         assert_eq!(take_token("#comment"), (None, "#comment"));
+        assert_eq!(skip_token_no_ws("#comment"), "#comment");
         assert_eq!(skip_token("#comment"), "#comment");
     }
 
     #[test]
     fn takes_entire_string() {
         assert_eq!(take_token("abcdef"), (Some(Cow::Borrowed("abcdef")), ""));
+        assert_eq!(skip_token_no_ws("abcdef"), "");
         assert_eq!(skip_token("abcdef"), "");
     }
 
@@ -147,6 +155,7 @@ mod tests {
     #[test]
     fn takes_entire_string_with_whitespaces() {
         assert_eq!(take_token("abcdef  "), (Some(Cow::Borrowed("abcdef")), ""));
+        assert_eq!(skip_token_no_ws("abcdef  "), "  ");
         assert_eq!(skip_token("abcdef  "), "");
     }
 

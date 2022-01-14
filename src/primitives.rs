@@ -1,11 +1,22 @@
 use super::{CompletionResult, Parser};
-use crate::utils::take_token;
+use crate::utils::{has_tokens, skip_token_no_ws, skip_ws, take_token};
 use crate::{ParseError, ParseResult};
 use std::borrow::Cow;
 use std::fmt;
 use std::marker::PhantomData;
 use std::num::{IntErrorKind, ParseIntError};
 use std::str::FromStr;
+
+fn complete_token_single(input: &str) -> CompletionResult<'_> {
+    if !has_tokens(input) {
+        return CompletionResult::empty();
+    }
+    let remaining = skip_token_no_ws(input);
+    match remaining.chars().next() {
+        Some(ch) if ch.is_whitespace() => CompletionResult::Consumed(skip_ws(remaining)),
+        _ => CompletionResult::empty(),
+    }
+}
 
 #[derive(Clone, Copy)]
 pub struct IntegerParser<T> {
@@ -54,8 +65,8 @@ where
         }
     }
 
-    fn complete<'a>(&self, _input: &'a str) -> CompletionResult<'a> {
-        todo!()
+    fn complete<'a>(&self, input: &'a str) -> CompletionResult<'a> {
+        complete_token_single(input)
     }
 }
 
@@ -65,6 +76,8 @@ mod tests {
     use crate::{ParseError, ParseResult, Parser};
 
     mod integer_parser {
+        use crate::CompletionResult;
+
         use super::*;
 
         #[test]
@@ -112,6 +125,33 @@ mod tests {
             assert_eq!(
                 Parser::<()>::parse(&parser, "  "),
                 ParseResult::Failed(ParseError::token_required("integer"))
+            );
+        }
+
+        #[test]
+        fn suggest_empty_string() {
+            let parser = IntegerParser::<i16>::create(());
+            assert_eq!(
+                Parser::<()>::complete(&parser, ""),
+                CompletionResult::empty(),
+            );
+        }
+
+        #[test]
+        fn suggest_last_token() {
+            let parser = IntegerParser::<i16>::create(());
+            assert_eq!(
+                Parser::<()>::complete(&parser, "123"),
+                CompletionResult::empty(),
+            );
+        }
+
+        #[test]
+        fn suggest_followed_by_space() {
+            let parser = IntegerParser::<i16>::create(());
+            assert_eq!(
+                Parser::<()>::complete(&parser, "123 456"),
+                CompletionResult::Consumed("456"),
             );
         }
     }
