@@ -139,6 +139,36 @@ impl<Ctx, T: Parsable<Ctx>> Parsable<Ctx> for Box<T> {
     type Parser = BoxParser<Ctx, T>;
 }
 
+pub struct OptionParser<Ctx, T: Parsable<Ctx>> {
+    inner_parser: T::Parser,
+}
+
+impl<Ctx, T: Parsable<Ctx>> Parser<Ctx> for OptionParser<Ctx, T> {
+    type Value = Option<T>;
+
+    fn create(ctx: Ctx) -> Self {
+        OptionParser {
+            inner_parser: T::new_parser(ctx),
+        }
+    }
+
+    fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
+        if has_tokens(input) {
+            self.inner_parser.parse(input).map(Some)
+        } else {
+            ParseResult::Parsed(None, input)
+        }
+    }
+
+    fn complete<'a>(&self, input: &'a str) -> CompletionResult<'a> {
+        self.inner_parser.complete(input)
+    }
+}
+
+impl<Ctx, T: Parsable<Ctx>> Parsable<Ctx> for Option<T> {
+    type Parser = OptionParser<Ctx, T>;
+}
+
 #[cfg(test)]
 mod tests {
     use super::VecParser;
@@ -299,6 +329,35 @@ mod tests {
         #[test]
         fn completion() {
             let parser = <Box<bool> as Parsable<()>>::new_parser(());
+            assert_eq!(
+                parser.complete("tr"),
+                CompletionResult::Suggestions(vec!["ue".into()])
+            );
+        }
+    }
+
+    mod option_parser {
+        use super::*;
+
+        #[test]
+        fn parse_some() {
+            let parser = <Option<bool> as Parsable<()>>::new_parser(());
+            assert_eq!(
+                parser.parse("true remaining"),
+                ParseResult::Parsed(Some(true), "remaining")
+            );
+        }
+
+        #[test]
+        fn parse_none() {
+            let parser = <Option<bool> as Parsable<()>>::new_parser(());
+            assert_eq!(parser.parse(""), ParseResult::Parsed(None, ""));
+            assert_eq!(parser.parse(")"), ParseResult::Parsed(None, ")"));
+        }
+
+        #[test]
+        fn completion() {
+            let parser = <Option<bool> as Parsable<()>>::new_parser(());
             assert_eq!(
                 parser.complete("tr"),
                 CompletionResult::Suggestions(vec!["ue".into()])
