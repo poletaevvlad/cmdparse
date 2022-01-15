@@ -1,5 +1,6 @@
 mod error;
 mod primitives;
+mod sequences;
 mod utils;
 
 pub use cmd_parser_derive::*;
@@ -13,7 +14,7 @@ pub use utils::*; // TODO
 
 #[derive(Debug, PartialEq)]
 pub enum ParseResult<'a, T> {
-    Unrecognized,
+    Unrecognized(ParseError<'a>),
     Parsed(T, &'a str),
     Failed(ParseError<'a>),
 }
@@ -21,6 +22,15 @@ pub enum ParseResult<'a, T> {
 impl<'a, T> From<ParseError<'a>> for ParseResult<'a, T> {
     fn from(error: ParseError<'a>) -> Self {
         ParseResult::Failed(error)
+    }
+}
+
+impl<'a, T> ParseResult<'a, T> {
+    pub fn into_parsed_or_failed(self) -> Self {
+        match self {
+            ParseResult::Unrecognized(error) => ParseResult::Failed(error),
+            result => result,
+        }
     }
 }
 
@@ -36,7 +46,7 @@ impl<'a> CompletionResult<'a> {
     }
 }
 
-trait Parser<Ctx> {
+pub trait Parser<Ctx> {
     type Value;
 
     fn create(ctx: Ctx) -> Self;
@@ -44,7 +54,7 @@ trait Parser<Ctx> {
     fn complete<'a>(&self, input: &'a str) -> CompletionResult<'a>;
 }
 
-trait Parsable<Ctx> {
+pub trait Parsable<Ctx> {
     type Parser: Parser<Ctx>;
 
     fn new_parser(ctx: Ctx) -> Self::Parser {

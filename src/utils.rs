@@ -1,5 +1,49 @@
-use crate::CompletionResult;
+use crate::{CompletionResult, ParseError, ParseResult, Parser};
 use std::borrow::Cow;
+
+pub fn parse_inner<'a, Ctx, P: Parser<Ctx>>(
+    mut input: &'a str,
+    parser: &P,
+) -> ParseResult<'a, P::Value> {
+    input = skip_ws(input);
+
+    if let Some(input) = input.strip_prefix('(') {
+        let (result, mut remaining) = match parser.parse(input) {
+            ParseResult::Parsed(result, remaining) => (result, remaining),
+            result => return result,
+        };
+        if remaining.starts_with(')') {
+            remaining = skip_ws(&remaining[1..]);
+        } else {
+            let (token, _) = take_token(remaining);
+            if let Some(token) = token {
+                return ParseError::unexpected_token(token).into();
+            }
+        }
+        ParseResult::Parsed(result, remaining)
+    } else {
+        parser.parse(input)
+    }
+}
+
+pub fn complete_inner<'a, Ctx, P: Parser<Ctx>>(
+    mut input: &'a str,
+    parser: &P,
+) -> CompletionResult<'a> {
+    input = skip_ws(input);
+
+    if let Some(input) = input.strip_prefix('(') {
+        match parser.complete(input) {
+            CompletionResult::Consumed(remaining) => {
+                let remaining = remaining.strip_prefix(')').unwrap_or(remaining);
+                CompletionResult::Consumed(remaining)
+            }
+            result => result,
+        }
+    } else {
+        parser.complete(input)
+    }
+}
 
 pub fn has_tokens(input: &str) -> bool {
     !input.is_empty() && !input.starts_with(')') && !input.starts_with('#')
