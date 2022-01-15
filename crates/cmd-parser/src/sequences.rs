@@ -191,7 +191,14 @@ impl<Ctx, T: Parsable<Ctx>> Parser<Ctx> for OptionParser<Ctx, T> {
 
     fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
         if has_tokens(input) {
-            self.inner_parser.parse(input).map(Some)
+            match self.inner_parser.parse(input).map(Some) {
+                ParseResult::Unrecognized(error)
+                    if error.kind() == ParseErrorKind::UnknownAttribute =>
+                {
+                    ParseResult::Parsed(None, input)
+                }
+                result => result,
+            }
         } else {
             ParseResult::Parsed(None, input)
         }
@@ -488,10 +495,36 @@ mod tests {
         }
 
         #[test]
+        fn parse_none_on_unknown_attribute() {
+            let parser = <Option<bool> as Parsable<()>>::new_parser(());
+            assert_eq!(
+                parser.parse("--unknown"),
+                ParseResult::Parsed(None, "--unknown")
+            );
+        }
+
+        #[test]
         fn parse_none() {
             let parser = <Option<bool> as Parsable<()>>::new_parser(());
             assert_eq!(parser.parse(""), ParseResult::Parsed(None, ""));
             assert_eq!(parser.parse(")"), ParseResult::Parsed(None, ")"));
+        }
+
+        #[test]
+        fn parse_tuple_of_options() {
+            let parser = <Vec<(bool, Option<bool>)> as Parsable<()>>::new_parser(());
+            assert_eq!(
+                parser.parse("true false true false"),
+                ParseResult::Parsed(vec![(true, Some(false)), (true, Some(false))], "")
+            );
+            assert_eq!(
+                parser.parse("true false true"),
+                ParseResult::Parsed(vec![(true, Some(false)), (true, None)], "")
+            );
+            assert_eq!(
+                parser.parse("true false true --unknown"),
+                ParseResult::Parsed(vec![(true, Some(false)), (true, None)], "--unknown")
+            );
         }
 
         #[test]
