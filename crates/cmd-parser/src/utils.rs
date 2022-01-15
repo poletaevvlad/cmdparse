@@ -16,8 +16,12 @@ pub fn parse_inner<'a, Ctx, P: Parser<Ctx>>(
             remaining = skip_ws(&remaining[1..]);
         } else {
             let (token, _) = take_token(remaining);
-            if let Some(token) = token {
-                return ParseError::unexpected_token(token).into();
+            match token {
+                Token::Text(text) if text.is_empty() => {}
+                Token::Text(text) => return ParseError::unexpected_token(text).into(),
+                Token::Attribute(attribute) => {
+                    return ParseError::unknown_attribute(attribute).into()
+                }
             }
         }
         ParseResult::Parsed(result, remaining)
@@ -61,12 +65,26 @@ pub fn skip_ws(mut input: &str) -> &str {
     }
 }
 
-pub fn take_token_no_ws(mut input: &str) -> (Option<Cow<'_, str>>, &str) {
+#[derive(Debug, PartialEq, Eq)]
+pub enum Token<'a> {
+    Text(Cow<'a, str>),
+    Attribute(Cow<'a, str>),
+}
+
+impl<'a> Token<'a> {
+    pub fn require_text(self) -> Result<Cow<'a, str>, ParseError<'a>> {
+        match self {
+            Token::Text(text) => Ok(text),
+            Token::Attribute(attribute) => Err(ParseError::unknown_attribute(attribute)),
+        }
+    }
+}
+
+fn take_string(mut input: &str) -> (Cow<'_, str>, &str) {
     if input.starts_with(')') || input.starts_with('#') {
-        return (None, input);
+        return ("".into(), input);
     }
 
-    let token_start = input;
     if input.starts_with('"') || input.starts_with('\'') {
         let mut result = String::new();
         let mut chars = input.chars();
@@ -84,8 +102,9 @@ pub fn take_token_no_ws(mut input: &str) -> (Option<Cow<'_, str>>, &str) {
                 }
             }
         }
-        (Some(result.into()), chars.as_str())
+        (result.into(), chars.as_str())
     } else {
+        let token_start = input;
         loop {
             let mut chars = input.chars();
             match chars.next() {
@@ -97,16 +116,27 @@ pub fn take_token_no_ws(mut input: &str) -> (Option<Cow<'_, str>>, &str) {
                 _ => break,
             }
         }
-        let token = &token_start[..(token_start.len() - input.len())];
-        if !token.is_empty() {
-            (Some(Cow::Borrowed(token)), input)
-        } else {
-            (None, input)
+        (
+            token_start[..(token_start.len() - input.len())].into(),
+            input,
+        )
+    }
+}
+
+pub fn take_token_no_ws(input: &str) -> (Token<'_>, &str) {
+    match input.strip_prefix("--") {
+        Some(input) => {
+            let (result, remaining) = take_string(input);
+            (Token::Attribute(result), remaining)
+        }
+        None => {
+            let (result, remaining) = take_string(input);
+            (Token::Text(result), remaining)
         }
     }
 }
 
-pub fn take_token(input: &str) -> (Option<Cow<'_, str>>, &str) {
+pub fn take_token(input: &str) -> (Token<'_>, &str) {
     let (token, remaining) = take_token_no_ws(input);
     (token, skip_ws(remaining))
 }
@@ -148,16 +178,15 @@ pub fn skip_token_no_ws(mut input: &str) -> &str {
     }
 }
 
-pub fn skip_token(input: &str) -> &str {
-    skip_ws(skip_token_no_ws(input))
-}
-
 /// Computes suggestions from a list of string slices. The list **must** be sorted.
 pub fn complete_enum<'a>(input: &'a str, variants: &[&'static str]) -> CompletionResult<'a> {
     let (token, remaining) = take_token_no_ws(input);
+    if !remaining.is_empty() {
+        return CompletionResult::Consumed(skip_ws(remaining));
+    }
+
     match token {
-        Some(_) if !remaining.is_empty() => CompletionResult::Consumed(skip_ws(remaining)),
-        Some(token) => {
+        Token::Text(token) if !token.is_empty() => {
             let index = variants
                 .binary_search(&token.as_ref())
                 .unwrap_or_else(|idx| idx);
@@ -170,13 +199,12 @@ pub fn complete_enum<'a>(input: &'a str, variants: &[&'static str]) -> Completio
                 .collect();
             CompletionResult::Suggestions(suggestions)
         }
-        None => CompletionResult::empty(),
+        _ => CompletionResult::empty(),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::skip_token;
     use super::*;
     use std::borrow::Cow;
 
@@ -187,120 +215,164 @@ mod tests {
         assert_eq!(skip_ws(""), "");
     }
 
-    #[test]
-    fn empty_string() {
-        assert_eq!(take_token(""), (None, ""));
-        assert_eq!(skip_token_no_ws(""), "");
-        assert_eq!(skip_token(""), "");
-    }
+    mod tokens {
+        use super::*;
 
-    #[test]
-    fn whitespace_only() {
-        assert_eq!(take_token("   "), (None, ""));
-        assert_eq!(skip_token_no_ws("   "), "   ");
-        assert_eq!(skip_token("   "), "");
-    }
+        #[test]
+        fn empty_string() {
+            assert_eq!(take_token(""), (Token::Text("".into()), ""));
+            assert_eq!(skip_token_no_ws(""), "");
 
-    #[test]
-    fn comment() {
-        assert_eq!(take_token("#comment"), (None, "#comment"));
-        assert_eq!(skip_token_no_ws("#comment"), "#comment");
-        assert_eq!(skip_token("#comment"), "#comment");
-    }
-
-    #[test]
-    fn takes_entire_string() {
-        assert_eq!(take_token("abcdef"), (Some(Cow::Borrowed("abcdef")), ""));
-        assert_eq!(skip_token_no_ws("abcdef"), "");
-        assert_eq!(skip_token("abcdef"), "");
-    }
-
-    #[test]
-    fn takes_until_comment() {
-        assert_eq!(
-            take_token("abcdef#comment"),
-            (Some(Cow::Borrowed("abcdef")), "#comment")
-        );
-        assert_eq!(skip_token("abcdef#comment"), "#comment");
-    }
-
-    #[test]
-    fn takes_entire_string_with_whitespaces() {
-        assert_eq!(take_token("abcdef  "), (Some(Cow::Borrowed("abcdef")), ""));
-        assert_eq!(skip_token_no_ws("abcdef  "), "  ");
-        assert_eq!(skip_token("abcdef  "), "");
-    }
-
-    #[test]
-    fn tokenizes_multiple() {
-        let mut input = "first second third";
-        let mut tokens = Vec::new();
-        loop {
-            let (token, remaining) = take_token(input);
-            let remaining2 = skip_token(input);
-            assert_eq!(remaining, remaining2);
-            if let Some(token) = token {
-                tokens.push(token);
-            } else {
-                break;
-            }
-            input = remaining;
+            assert_eq!(take_token("--"), (Token::Attribute("".into()), ""));
+            assert_eq!(skip_token_no_ws("--"), "");
         }
-        assert_eq!(tokens, vec!["first", "second", "third"]);
-    }
 
-    #[test]
-    fn empty_quoted_string() {
-        assert_eq!(take_token("''  a"), (Some(Cow::Owned(String::new())), "a"));
-        assert_eq!(skip_token("''  a"), "a");
-        assert_eq!(
-            take_token("\"\"  a"),
-            (Some(Cow::Owned(String::new())), "a")
-        );
-        assert_eq!(skip_token("\"\"  a"), "a");
-    }
+        #[test]
+        fn whitespace_only() {
+            assert_eq!(take_token("   "), (Token::Text("".into()), ""));
+            assert_eq!(skip_token_no_ws("   "), "   ");
 
-    #[test]
-    fn non_empty_quoted_string() {
-        assert_eq!(
-            take_token("'abc \"def'  a"),
-            (Some(Cow::Owned("abc \"def".to_string())), "a")
-        );
-        assert_eq!(skip_token("'abc \"def'  a"), "a");
+            assert_eq!(take_token("--   "), (Token::Attribute("".into()), ""));
+            assert_eq!(skip_token_no_ws("--   "), "   ");
+        }
 
-        assert_eq!(
-            take_token("\"abc 'def\"  a"),
-            (Some(Cow::Owned("abc 'def".to_string())), "a")
-        );
-        assert_eq!(skip_token("\"abc 'def\"  a"), "a");
-    }
+        #[test]
+        fn comment() {
+            assert_eq!(take_token("#comment"), (Token::Text("".into()), "#comment"));
+            assert_eq!(skip_token_no_ws("#comment"), "#comment");
 
-    #[test]
-    fn string_with_escape_sequence() {
-        assert_eq!(
-            take_token(r#"'"\'\\\a'  a"#),
-            (Some(Cow::Owned(r#""'\a"#.to_string())), "a")
-        );
-        assert_eq!(skip_token(r#"'"\'\\\a'  a"#), "a");
-        assert_eq!(
-            take_token(r#""\"'\\\a"  a"#),
-            (Some(Cow::Owned(r#""'\a"#.to_string())), "a")
-        );
-        assert_eq!(skip_token(r#""\"'\\\a"  a"#), "a");
-    }
+            assert_eq!(
+                take_token("--#comment"),
+                (Token::Attribute("".into()), "#comment")
+            );
+            assert_eq!(skip_token_no_ws("--#comment"), "#comment");
+        }
 
-    #[test]
-    fn token_followed_by_string() {
-        assert_eq!(
-            take_token("abc\"def\""),
-            (Some(Cow::Borrowed("abc")), "\"def\"")
-        );
-        assert_eq!(skip_token("abc\"def\""), "\"def\"");
-        assert_eq!(
-            take_token("abc'def'"),
-            (Some(Cow::Borrowed("abc")), "'def'")
-        );
-        assert_eq!(skip_token("abc'def'"), "'def'");
+        #[test]
+        fn takes_entire_string() {
+            assert_eq!(
+                take_token("abcdef"),
+                (Token::Text(Cow::Borrowed("abcdef")), "")
+            );
+            assert_eq!(skip_token_no_ws("abcdef"), "");
+
+            assert_eq!(
+                take_token("--abcdef"),
+                (Token::Attribute(Cow::Borrowed("abcdef")), "")
+            );
+            assert_eq!(skip_token_no_ws("--abcdef"), "");
+        }
+
+        #[test]
+        fn takes_until_comment() {
+            assert_eq!(
+                take_token("abcdef#comment"),
+                (Token::Text("abcdef".into()), "#comment")
+            );
+            assert_eq!(skip_token_no_ws("abcdef#comment"), "#comment");
+
+            assert_eq!(
+                take_token("--abcdef#comment"),
+                (Token::Attribute("abcdef".into()), "#comment")
+            );
+            assert_eq!(skip_token_no_ws("--abcdef#comment"), "#comment");
+        }
+
+        #[test]
+        fn takes_entire_string_with_whitespaces() {
+            assert_eq!(take_token("abcdef  "), (Token::Text("abcdef".into()), ""));
+            assert_eq!(skip_token_no_ws("abcdef  "), "  ");
+
+            assert_eq!(
+                take_token("--abcdef  "),
+                (Token::Attribute("abcdef".into()), "")
+            );
+            assert_eq!(skip_token_no_ws("--abcdef  "), "  ");
+        }
+
+        #[test]
+        fn tokenizes_multiple() {
+            let mut input = "first second --attribute third";
+            let mut tokens = Vec::new();
+            while has_tokens(input) {
+                let (token, remaining) = take_token(input);
+                let remaining2 = skip_ws(skip_token_no_ws(input));
+                assert_eq!(remaining, remaining2);
+                match token {
+                    Token::Text(text) => tokens.push(text.to_string()),
+                    Token::Attribute(attr) => tokens.push(format!("--({})", attr)),
+                }
+                input = remaining;
+            }
+            assert_eq!(
+                tokens,
+                vec![
+                    "first".to_string(),
+                    "second".to_string(),
+                    "--(attribute)".to_string(),
+                    "third".to_string(),
+                ]
+            );
+        }
+
+        #[test]
+        fn empty_quoted_string() {
+            assert_eq!(take_token("''  a"), (Token::Text("".into()), "a"));
+            assert_eq!(skip_token_no_ws("''  a"), "  a");
+            assert_eq!(take_token("\"\"  a"), (Token::Text("".into()), "a"));
+            assert_eq!(skip_token_no_ws("\"\"  a"), "  a");
+
+            assert_eq!(take_token("--''  a"), (Token::Attribute("".into()), "a"));
+            assert_eq!(take_token("--\"\"  a"), (Token::Attribute("".into()), "a"));
+        }
+
+        #[test]
+        fn non_empty_quoted_string() {
+            assert_eq!(
+                take_token("'abc \"def'  a"),
+                (Token::Text("abc \"def".into()), "a")
+            );
+            assert_eq!(
+                take_token("--'abc \"def'  a"),
+                (Token::Attribute("abc \"def".into()), "a")
+            );
+            assert_eq!(skip_token_no_ws("'abc \"def'  a"), "  a");
+
+            assert_eq!(
+                take_token("\"abc 'def\"  a"),
+                (Token::Text("abc 'def".into()), "a")
+            );
+            assert_eq!(skip_token_no_ws("\"abc 'def\"  a"), "  a");
+        }
+
+        #[test]
+        fn string_with_escape_sequence() {
+            assert_eq!(
+                take_token(r#"'"\'\\\a'  a"#),
+                (Token::Text(r#""'\a"#.into()), "a")
+            );
+            assert_eq!(
+                take_token(r#"--'"\'\\\a'  a"#),
+                (Token::Attribute(r#""'\a"#.into()), "a")
+            );
+            assert_eq!(skip_token_no_ws(r#"'"\'\\\a'  a"#), "  a");
+            assert_eq!(
+                take_token(r#""\"'\\\a"  a"#),
+                (Token::Text(r#""'\a"#.into()), "a")
+            );
+            assert_eq!(skip_token_no_ws(r#""\"'\\\a"  a"#), "  a");
+        }
+
+        #[test]
+        fn token_followed_by_string() {
+            assert_eq!(
+                take_token("abc\"def\""),
+                (Token::Text("abc".into()), "\"def\"")
+            );
+            assert_eq!(skip_token_no_ws("abc\"def\""), "\"def\"");
+            assert_eq!(take_token("abc'def'"), (Token::Text("abc".into()), "'def'"));
+            assert_eq!(skip_token_no_ws("abc'def'"), "'def'");
+        }
     }
 
     mod complete_enum_tests {

@@ -74,8 +74,9 @@ where
 
     fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
         let (token, remaining) = take_token(input);
-        match token {
-            Some(token) => match token.parse() {
+        match token.require_text() {
+            Ok(token) if token.is_empty() => ParseError::token_required("integer").into(),
+            Ok(token) => match token.parse() {
                 Ok(value) => ParseResult::Parsed(value, remaining),
                 Err(error) => {
                     let error_label: Option<Cow<'static, str>> = match error.kind() {
@@ -86,7 +87,7 @@ where
                     ParseError::token_parse(token, error_label, "integer").into()
                 }
             },
-            None => ParseError::token_required("integer").into(),
+            Err(err) => err.into(),
         }
     }
 
@@ -111,12 +112,13 @@ where
 
     fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
         let (token, remaining) = take_token(input);
-        match token {
-            Some(token) => match token.parse() {
+        match token.require_text() {
+            Ok(token) if token.is_empty() => ParseError::token_required("real number").into(),
+            Ok(token) => match token.parse() {
                 Ok(value) => ParseResult::Parsed(value, remaining),
                 Err(_) => ParseResult::Failed(ParseError::token_parse(token, None, "real number")),
             },
-            None => ParseError::token_required("real number").into(),
+            Err(err) => err.into(),
         }
     }
 
@@ -137,9 +139,10 @@ impl<Ctx> Parser<Ctx> for StringParser {
 
     fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
         let (token, remaining) = take_token(input);
-        match token {
-            Some(token) => ParseResult::Parsed(token.into_owned(), remaining),
-            None => ParseError::token_required("string").into(),
+        match token.require_text() {
+            Ok(token) if token.is_empty() => ParseError::token_required("string").into(),
+            Ok(token) => ParseResult::Parsed(token.into_owned(), remaining),
+            Err(err) => err.into(),
         }
     }
 
@@ -164,13 +167,14 @@ impl<Ctx> Parser<Ctx> for BooleanParser {
 
     fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
         let (token, remaining) = take_token(input);
-        match token {
-            Some(token) => match token.borrow() {
+        match token.require_text() {
+            Ok(token) if token.is_empty() => ParseError::token_required("boolean").into(),
+            Ok(token) => match token.borrow() {
                 "true" | "t" | "yes" | "y" => ParseResult::Parsed(true, remaining),
                 "false" | "f" | "no" | "n" => ParseResult::Parsed(false, remaining),
                 _ => ParseResult::Failed(ParseError::token_parse(token, None, "boolean")),
             },
-            None => ParseError::token_required("boolean").into(),
+            Err(err) => err.into(),
         }
     }
 
