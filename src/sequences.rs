@@ -113,6 +113,32 @@ gen_parsable_tuple!(TupleParser14, T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 T12 T13 T1
 gen_parsable_tuple!(TupleParser15, T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 T12 T13 T14 T15);
 gen_parsable_tuple!(TupleParser16, T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 T12 T13 T14 T15 T16);
 
+pub struct BoxParser<Ctx, T: Parsable<Ctx>> {
+    inner_parser: T::Parser,
+}
+
+impl<Ctx, T: Parsable<Ctx>> Parser<Ctx> for BoxParser<Ctx, T> {
+    type Value = Box<T>;
+
+    fn create(ctx: Ctx) -> Self {
+        BoxParser {
+            inner_parser: T::new_parser(ctx),
+        }
+    }
+
+    fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
+        self.inner_parser.parse(input).map(Box::new)
+    }
+
+    fn complete<'a>(&self, input: &'a str) -> CompletionResult<'a> {
+        self.inner_parser.complete(input)
+    }
+}
+
+impl<Ctx, T: Parsable<Ctx>> Parsable<Ctx> for Box<T> {
+    type Parser = BoxParser<Ctx, T>;
+}
+
 #[cfg(test)]
 mod tests {
     use super::VecParser;
@@ -254,6 +280,28 @@ mod tests {
             assert_eq!(
                 parser.complete("5 false 4 6"),
                 CompletionResult::Consumed("6")
+            );
+        }
+    }
+
+    mod box_parser {
+        use super::*;
+
+        #[test]
+        fn parse() {
+            let parser = <Box<bool> as Parsable<()>>::new_parser(());
+            assert_eq!(
+                parser.parse("true 10"),
+                ParseResult::Parsed(Box::new(true), "10")
+            );
+        }
+
+        #[test]
+        fn completion() {
+            let parser = <Box<bool> as Parsable<()>>::new_parser(());
+            assert_eq!(
+                parser.complete("tr"),
+                CompletionResult::Suggestions(vec!["ue".into()])
             );
         }
     }

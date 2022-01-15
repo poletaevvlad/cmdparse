@@ -26,10 +26,11 @@ impl<'a, T> From<ParseError<'a>> for ParseResult<'a, T> {
 }
 
 impl<'a, T> ParseResult<'a, T> {
-    pub fn into_parsed_or_failed(self) -> Self {
+    pub fn map<R, F: FnOnce(T) -> R>(self, func: F) -> ParseResult<'a, R> {
         match self {
-            ParseResult::Unrecognized(error) => ParseResult::Failed(error),
-            result => result,
+            ParseResult::Unrecognized(error) => ParseResult::Unrecognized(error),
+            ParseResult::Parsed(result, remaining) => ParseResult::Parsed(func(result), remaining),
+            ParseResult::Failed(error) => ParseResult::Failed(error),
         }
     }
 }
