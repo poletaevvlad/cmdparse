@@ -63,25 +63,39 @@ impl<Ctx, T: Parsable<Ctx> + std::fmt::Debug> Parsable<Ctx> for Vec<T> {
 }
 
 macro_rules! gen_parsable_tuple {
-    ($parser_name:ident, $($param:ident)*) => {
+    ($parser_name:ident, $param_first:ident $($param:ident)*) => {
         #[allow(non_snake_case)]
-        pub struct $parser_name<Ctx, $($param: Parsable<Ctx>),*> {
+        pub struct $parser_name<Ctx, $param_first: Parsable<Ctx>, $($param: Parsable<Ctx>),*> {
+            $param_first: $param_first::Parser,
             $(
                 $param: $param::Parser,
             )*
         }
 
-        impl<Ctx: Clone, $($param: Parsable<Ctx>),*> Parser<Ctx> for $parser_name<Ctx, $($param),*> {
-            type Value = ($($param,)*);
+        impl<Ctx: Clone, $param_first: Parsable<Ctx>, $($param: Parsable<Ctx>),*> Parser<Ctx> for $parser_name<Ctx, $param_first, $($param),*> {
+            type Value = ($param_first, $($param,)*);
 
             fn create(ctx: Ctx) -> Self {
                 $parser_name {
+                    $param_first: $param_first::new_parser(ctx.clone()),
                     $($param: $param::new_parser(ctx.clone())),*
                 }
             }
 
             #[allow(non_snake_case)]
             fn parse<'a>(&self, mut input: &'a str) -> ParseResult<'a, Self::Value> {
+                let $param_first = match parse_inner(input, &self.$param_first) {
+                    ParseResult::Parsed(value, remaining) => {
+                        input = remaining;
+                        value
+                    }
+                    ParseResult::Unrecognized(err) if err.kind() == ParseErrorKind::UnknownAttribute => {
+                        return ParseResult::Unrecognized(err)
+                    }
+                    ParseResult::Failed(err) | ParseResult::Unrecognized(err) => {
+                        return ParseResult::Failed(err)
+                    }
+                };
                 $(
                     let $param = match parse_inner(input, &self.$param) {
                         ParseResult::Parsed(value, remaining) => {
@@ -93,13 +107,19 @@ macro_rules! gen_parsable_tuple {
                         }
                     };
                 )*
-                ParseResult::Parsed(($($param,)*), input)
+                ParseResult::Parsed(($param_first, $($param,)*), input)
             }
 
             fn complete<'a>(&self, mut input: &'a str) -> CompletionResult<'a> {
+                match complete_inner(input, &self.$param_first) {
+                    CompletionResult::Consumed(remaining) => input = remaining,
+                    result @ CompletionResult::Suggestions(_) => return result,
+                    result @ CompletionResult::Unrecognized(_) => return result,
+                }
                 $(
                     match complete_inner(input, &self.$param) {
                         CompletionResult::Consumed(remaining) => input = remaining,
+                        CompletionResult::Unrecognized(_) => return CompletionResult::empty(),
                         result => return result,
                     }
                 )*
@@ -107,8 +127,8 @@ macro_rules! gen_parsable_tuple {
             }
         }
 
-        impl<Ctx: Clone, $($param: Parsable<Ctx>),*> Parsable<Ctx> for ($($param,)*) {
-            type Parser = $parser_name<Ctx, $($param),*>;
+        impl<Ctx: Clone, $param_first: Parsable<Ctx>, $($param: Parsable<Ctx>),*> Parsable<Ctx> for ($param_first, $($param,)*) {
+            type Parser = $parser_name<Ctx, $param_first, $($param),*>;
         }
     }
 }
@@ -374,6 +394,29 @@ mod tests {
         }
 
         #[test]
+        fn parses_unrecognized_if_starts_with_unknown_attribute() {
+            let parser = <(u8, u8) as Parsable<()>>::new_parser(());
+            assert_eq!(
+                parser.parse("--unknown"),
+                ParseResult::Unrecognized(ParseError::unknown_attribute("unknown")),
+            );
+            assert_eq!(
+                parser.complete("--unknown"),
+                CompletionResult::Unrecognized("--unknown"),
+            );
+        }
+
+        #[test]
+        fn parse_error_if_contains_unknown_attribute() {
+            let parser = <(u8, u8) as Parsable<()>>::new_parser(());
+            assert_eq!(
+                parser.parse("1 --unknown"),
+                ParseResult::Failed(ParseError::unknown_attribute("unknown")),
+            );
+            assert_eq!(parser.complete("1 --unknown"), CompletionResult::empty(),);
+        }
+
+        #[test]
         fn completion() {
             let parser = <(u8, (bool, u8)) as Parsable<()>>::new_parser(());
             assert_eq!(
@@ -388,6 +431,24 @@ mod tests {
             assert_eq!(
                 parser.complete("5 false 4 6"),
                 CompletionResult::Consumed("6")
+            );
+        }
+
+        #[test]
+        fn stops_vec_of_tuples() {
+            let parser = <Vec<((u8, i16), bool)> as Parsable<()>>::new_parser(());
+            assert_eq!(
+                parser.parse("1 2 true 4 5 false --unknown"),
+                ParseResult::Parsed(vec![((1, 2), true), ((4, 5), false)], "--unknown"),
+            );
+        }
+
+        #[test]
+        fn fails_parsing_vec_of_tuples_if_unknown_attribute_in_the_middle_of_tuple() {
+            let parser = <Vec<((u8, i16), bool)> as Parsable<()>>::new_parser(());
+            assert_eq!(
+                parser.parse("1 2 true 4 5 --unknown"),
+                ParseResult::Failed(ParseError::unknown_attribute("unknown")),
             );
         }
     }
