@@ -10,7 +10,9 @@ pub fn parse_inner<'a, Ctx, P: Parser<Ctx>>(
     if let Some(input) = input.strip_prefix('(') {
         let (result, mut remaining) = match parser.parse(input) {
             ParseResult::Parsed(result, remaining) => (result, remaining),
-            result => return result,
+            ParseResult::Unrecognized(error) | ParseResult::Failed(error) => {
+                return ParseResult::Failed(error)
+            }
         };
         if remaining.starts_with(')') {
             remaining = skip_ws(&remaining[1..]);
@@ -42,6 +44,7 @@ pub fn complete_inner<'a, Ctx, P: Parser<Ctx>>(
                 let remaining = remaining.strip_prefix(')').unwrap_or(remaining);
                 CompletionResult::Consumed(remaining)
             }
+            CompletionResult::Unrecognized(_) => CompletionResult::empty(),
             result => result,
         }
     } else {
@@ -69,15 +72,6 @@ pub fn skip_ws(mut input: &str) -> &str {
 pub enum Token<'a> {
     Text(Cow<'a, str>),
     Attribute(Cow<'a, str>),
-}
-
-impl<'a> Token<'a> {
-    pub fn require_text(self) -> Result<Cow<'a, str>, ParseError<'a>> {
-        match self {
-            Token::Text(text) => Ok(text),
-            Token::Attribute(attribute) => Err(ParseError::unknown_attribute(attribute)),
-        }
-    }
 }
 
 fn take_string(mut input: &str) -> (Cow<'_, str>, &str) {

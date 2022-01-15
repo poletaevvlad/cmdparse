@@ -1,3 +1,4 @@
+use crate::error::ParseErrorKind;
 use crate::utils::{complete_inner, has_tokens, parse_inner};
 use crate::{CompletionResult, Parsable, ParseResult, Parser};
 
@@ -5,7 +6,7 @@ pub struct VecParser<Ctx, T: Parsable<Ctx>> {
     inner_parser: T::Parser,
 }
 
-impl<Ctx, T: Parsable<Ctx>> Parser<Ctx> for VecParser<Ctx, T> {
+impl<Ctx, T: Parsable<Ctx> + std::fmt::Debug> Parser<Ctx> for VecParser<Ctx, T> {
     type Value = Vec<T>;
 
     fn create(ctx: Ctx) -> Self {
@@ -17,10 +18,20 @@ impl<Ctx, T: Parsable<Ctx>> Parser<Ctx> for VecParser<Ctx, T> {
     fn parse<'a>(&self, mut input: &'a str) -> ParseResult<'a, Self::Value> {
         let mut result = Vec::new();
         while has_tokens(input) {
-            match parse_inner(input, &self.inner_parser) {
+            let parsed = parse_inner(input, &self.inner_parser);
+            println!("{:?}", parsed);
+            match parsed {
                 ParseResult::Parsed(value, remaining) => {
                     input = remaining;
                     result.push(value);
+                }
+                ParseResult::Unrecognized(err)
+                    if err.kind() == ParseErrorKind::UnknownAttribute =>
+                {
+                    if result.is_empty() {
+                        return ParseResult::Unrecognized(err);
+                    }
+                    break;
                 }
                 ParseResult::Unrecognized(err) | ParseResult::Failed(err) => {
                     return ParseResult::Failed(err)
@@ -31,17 +42,23 @@ impl<Ctx, T: Parsable<Ctx>> Parser<Ctx> for VecParser<Ctx, T> {
     }
 
     fn complete<'a>(&self, mut input: &'a str) -> CompletionResult<'a> {
+        let mut is_first = true;
         while has_tokens(input) {
             match complete_inner(input, &self.inner_parser) {
                 CompletionResult::Consumed(remaining) => input = remaining,
-                result => return result,
+                result @ CompletionResult::Unrecognized(_) if is_first => return result,
+                CompletionResult::Unrecognized(remaining) => {
+                    return CompletionResult::Consumed(remaining)
+                }
+                result @ CompletionResult::Suggestions(_) => return result,
             }
+            is_first = false;
         }
         CompletionResult::Consumed(input)
     }
 }
 
-impl<Ctx, T: Parsable<Ctx>> Parsable<Ctx> for Vec<T> {
+impl<Ctx, T: Parsable<Ctx> + std::fmt::Debug> Parsable<Ctx> for Vec<T> {
     type Parser = VecParser<Ctx, T>;
 }
 
@@ -252,6 +269,67 @@ mod tests {
             assert_eq!(
                 parser.complete("(true false) (false) (fal)"),
                 CompletionResult::Consumed(""),
+            );
+        }
+
+        #[test]
+        fn stops_on_unknown_attribute() {
+            let parser: VecParser<(), i32> = VecParser::create(());
+            assert_eq!(
+                parser.parse("1 2 3 --unknown 4 5"),
+                ParseResult::Parsed(vec![1, 2, 3], "--unknown 4 5"),
+            );
+            assert_eq!(
+                parser.complete("1 2 3 --unknown 4 5"),
+                CompletionResult::Consumed("--unknown 4 5"),
+            );
+        }
+
+        #[test]
+        fn stops_on_unknown_attribute_with_nested_vecs() {
+            let parser: VecParser<(), Vec<i32>> = VecParser::create(());
+            assert_eq!(
+                parser.parse("(1 2) 3 --unknown 4 5"),
+                ParseResult::Parsed(vec![vec![1, 2], vec![3]], "--unknown 4 5"),
+            );
+            assert_eq!(
+                parser.complete("1 2 3 --unknown 4 5"),
+                CompletionResult::Consumed("--unknown 4 5"),
+            );
+        }
+
+        #[test]
+        fn stops_on_unknown_attribute_on_first_nested_vec() {
+            let parser: VecParser<(), Vec<i32>> = VecParser::create(());
+            assert_eq!(
+                parser.parse("--unknown (1 2) (3 4) 5"),
+                ParseResult::Unrecognized(ParseError::unknown_attribute("unknown")),
+            );
+            assert_eq!(
+                parser.complete("--unknown (1 2) (3 4) 5"),
+                CompletionResult::Unrecognized("--unknown (1 2) (3 4) 5"),
+            );
+        }
+
+        #[test]
+        fn stops_on_unknown_attribute_on_first_nested_vec_inside_parenthesis() {
+            let parser: VecParser<(), Vec<i32>> = VecParser::create(());
+            assert_eq!(
+                parser.parse("(--unknown 1 2) (3 4) 5"),
+                ParseResult::Failed(ParseError::unknown_attribute("unknown")),
+            );
+            assert_eq!(
+                parser.complete("(--unknown 1 2) (3 4) 5"),
+                CompletionResult::empty(),
+            );
+        }
+
+        #[test]
+        fn fails_on_unknown_attribure_with_parenthesis() {
+            let parser: VecParser<(), Vec<i32>> = VecParser::create(());
+            assert_eq!(
+                parser.parse("(1 2) (3 --unknown) 4 5"),
+                ParseResult::Failed(ParseError::unknown_attribute("unknown")),
             );
         }
     }
