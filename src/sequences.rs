@@ -48,11 +48,9 @@ impl<Ctx, T: Parsable<Ctx>> Parsable<Ctx> for Vec<T> {
 #[cfg(test)]
 mod tests {
     use super::VecParser;
-    use crate::{ParseResult, Parser};
+    use crate::{CompletionResult, ParseError, ParseResult, Parser};
 
     mod vec_parser {
-        use crate::ParseError;
-
         use super::*;
 
         #[test]
@@ -85,6 +83,51 @@ mod tests {
             assert_eq!(
                 parser.parse("() (1 2 3) 4 5 6 7"),
                 ParseResult::Parsed(vec![vec![], vec![1, 2, 3], vec![4, 5, 6, 7]], "")
+            );
+        }
+
+        #[test]
+        fn suggest_first() {
+            let parser: VecParser<(), bool> = VecParser::create(());
+            assert_eq!(
+                parser.complete("tr"),
+                CompletionResult::Suggestions(vec!["ue".into()])
+            );
+        }
+
+        #[test]
+        fn suggest_not_first() {
+            let parser: VecParser<(), bool> = VecParser::create(());
+            assert_eq!(
+                parser.complete("true fa"),
+                CompletionResult::Suggestions(vec!["lse".into()])
+            );
+        }
+
+        #[test]
+        fn suggestion_consumed() {
+            let parser: VecParser<(), bool> = VecParser::create(());
+            assert_eq!(
+                parser.complete("true false "),
+                CompletionResult::Consumed("")
+            );
+        }
+
+        #[test]
+        fn suggestion_nested() {
+            let parser: VecParser<(), Vec<bool>> = VecParser::create(());
+            assert_eq!(
+                parser.complete("(true false) (false) (fal"),
+                CompletionResult::Suggestions(vec!["se".into()]),
+            );
+        }
+
+        #[test]
+        fn suggestion_nested_closed() {
+            let parser: VecParser<(), Vec<bool>> = VecParser::create(());
+            assert_eq!(
+                parser.complete("(true false) (false) (fal)"),
+                CompletionResult::Consumed(""),
             );
         }
     }
