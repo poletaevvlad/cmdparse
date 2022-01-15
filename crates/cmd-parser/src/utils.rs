@@ -176,8 +176,8 @@ pub fn complete_enum<'a>(input: &'a str, variants: &[&'static str]) -> Completio
 
 #[cfg(test)]
 mod tests {
+    use super::skip_token;
     use super::*;
-    use crate::skip_token;
     use std::borrow::Cow;
 
     #[test]

@@ -1,6 +1,5 @@
-use super::{CompletionResult, Parser};
-use crate::utils::{has_tokens, skip_token_no_ws, skip_ws, take_token};
-use crate::{complete_enum, Parsable, ParseError, ParseResult};
+use super::{CompletionResult, Parsable, ParseError, ParseResult, Parser};
+use crate::utils::{complete_enum, has_tokens, skip_token_no_ws, skip_ws, take_token};
 use std::borrow::{Borrow, Cow};
 use std::fmt;
 use std::marker::PhantomData;
