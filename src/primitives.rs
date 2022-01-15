@@ -149,7 +149,7 @@ impl<Ctx> Parser<Ctx> for StringParser {
     }
 }
 
-impl<Ctx> Parsable<Ctx> for StringParser {
+impl<Ctx> Parsable<Ctx> for String {
     type Parser = StringParser;
 }
 

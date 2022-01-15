@@ -55,7 +55,7 @@ pub trait Parser<Ctx> {
 }
 
 pub trait Parsable<Ctx> {
-    type Parser: Parser<Ctx>;
+    type Parser: Parser<Ctx, Value = Self>;
 
     fn new_parser(ctx: Ctx) -> Self::Parser {
         Self::Parser::create(ctx)
