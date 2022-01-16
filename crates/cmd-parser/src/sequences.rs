@@ -111,6 +111,28 @@ impl<Ctx, T: Parsable<Ctx> + std::fmt::Debug> Parsable<Ctx> for Vec<T> {
     type Parser = VecParser<Ctx, T>;
 }
 
+pub struct TupleParser0;
+
+impl<Ctx> Parser<Ctx> for TupleParser0 {
+    type Value = ();
+
+    fn create(_ctx: Ctx) -> Self {
+        TupleParser0
+    }
+
+    fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
+        ParseResult::Parsed((), input)
+    }
+
+    fn complete<'a>(&self, input: &'a str) -> CompletionResult<'a> {
+        CompletionResult::Consumed(input)
+    }
+}
+
+impl<Ctx> Parsable<Ctx> for () {
+    type Parser = TupleParser0;
+}
+
 macro_rules! gen_parsable_tuple {
     ($parser_name:ident, $param_first:ident $($param:ident)*) => {
         #[allow(non_snake_case)]
@@ -581,5 +603,18 @@ mod tests {
                 CompletionResult::Suggestions(vec!["ue".into()])
             );
         }
+    }
+
+    #[test]
+    fn parser_tuple_0() {
+        let parser = <() as Parsable<()>>::new_parser(());
+        assert_eq!(
+            Parser::<()>::parse(&parser, "any"),
+            ParseResult::Parsed((), "any")
+        );
+        assert_eq!(
+            Parser::<()>::complete(&parser, "any"),
+            CompletionResult::Consumed("any")
+        );
     }
 }
