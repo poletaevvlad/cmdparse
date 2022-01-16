@@ -81,7 +81,9 @@ where
             Token::Attribute(attribute) => {
                 ParseResult::Unrecognized(ParseError::unknown_attribute(attribute))
             }
-            Token::Text(token) if token.is_empty() => ParseError::token_required("integer").into(),
+            Token::Text(token) if token.is_empty() => {
+                ParseResult::Failed(ParseError::token_required("integer"))
+            }
             Token::Text(token) => match token.parse() {
                 Ok(value) => ParseResult::Parsed(value, remaining),
                 Err(error) => {
@@ -90,7 +92,7 @@ where
                         IntErrorKind::NegOverflow => Some("too small".into()),
                         _ => None,
                     };
-                    ParseError::token_parse(token, error_label, "integer").into()
+                    ParseResult::Failed(ParseError::token_parse(token, error_label, "integer"))
                 }
             },
         }
@@ -122,7 +124,7 @@ where
                 ParseResult::Unrecognized(ParseError::unknown_attribute(attribute))
             }
             Token::Text(token) if token.is_empty() => {
-                ParseError::token_required("real number").into()
+                ParseResult::Failed(ParseError::token_required("real number"))
             }
             Token::Text(token) => match token.parse() {
                 Ok(value) => ParseResult::Parsed(value, remaining),
@@ -152,7 +154,9 @@ impl<Ctx> Parser<Ctx> for StringParser {
             Token::Attribute(attribute) => {
                 ParseResult::Unrecognized(ParseError::unknown_attribute(attribute))
             }
-            Token::Text(token) if token.is_empty() => ParseError::token_required("string").into(),
+            Token::Text(token) if token.is_empty() => {
+                ParseResult::Failed(ParseError::token_required("string"))
+            }
             Token::Text(token) => ParseResult::Parsed(token.into_owned(), remaining),
         }
     }
@@ -182,7 +186,9 @@ impl<Ctx> Parser<Ctx> for BooleanParser {
             Token::Attribute(attribute) => {
                 ParseResult::Unrecognized(ParseError::unknown_attribute(attribute))
             }
-            Token::Text(token) if token.is_empty() => ParseError::token_required("boolean").into(),
+            Token::Text(token) if token.is_empty() => {
+                ParseResult::Failed(ParseError::token_required("boolean"))
+            }
             Token::Text(token) => match token.borrow() {
                 "true" | "t" | "yes" | "y" => ParseResult::Parsed(true, remaining),
                 "false" | "f" | "no" | "n" => ParseResult::Parsed(false, remaining),

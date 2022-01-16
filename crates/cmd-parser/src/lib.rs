@@ -13,12 +13,6 @@ pub enum ParseResult<'a, T> {
     Failed(ParseError<'a>),
 }
 
-impl<'a, T> From<ParseError<'a>> for ParseResult<'a, T> {
-    fn from(error: ParseError<'a>) -> Self {
-        ParseResult::Failed(error)
-    }
-}
-
 impl<'a, T> ParseResult<'a, T> {
     pub fn map<R, F: FnOnce(T) -> R>(self, func: F) -> ParseResult<'a, R> {
         match self {

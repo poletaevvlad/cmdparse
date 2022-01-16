@@ -26,9 +26,11 @@ pub fn parse_inner<'a, Ctx, P: Parser<Ctx>>(
             let (token, _) = take_token(remaining);
             match token {
                 Token::Text(text) if text.is_empty() => {}
-                Token::Text(text) => return ParseError::unexpected_token(text).into(),
+                Token::Text(text) => {
+                    return ParseResult::Failed(ParseError::unexpected_token(text))
+                }
                 Token::Attribute(attribute) => {
-                    return ParseError::unknown_attribute(attribute).into()
+                    return ParseResult::Failed(ParseError::unknown_attribute(attribute))
                 }
             }
         }
