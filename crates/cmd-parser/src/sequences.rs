@@ -163,17 +163,21 @@ impl<Ctx, C: ParsableCollection<Ctx> + Default> Parser<Ctx> for CollectionParser
     }
 }
 
-pub struct TupleParser0;
+pub struct DefaultValueParser<T> {
+    _phantom: PhantomData<T>,
+}
 
-impl<Ctx> Parser<Ctx> for TupleParser0 {
-    type Value = ();
+impl<Ctx, T: Default> Parser<Ctx> for DefaultValueParser<T> {
+    type Value = T;
 
     fn create(_ctx: Ctx) -> Self {
-        TupleParser0
+        DefaultValueParser {
+            _phantom: PhantomData,
+        }
     }
 
     fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
-        ParseResult::Parsed((), input)
+        ParseResult::Parsed(<T as Default>::default(), input)
     }
 
     fn complete<'a>(&self, input: &'a str) -> CompletionResult<'a> {
@@ -182,7 +186,11 @@ impl<Ctx> Parser<Ctx> for TupleParser0 {
 }
 
 impl<Ctx> Parsable<Ctx> for () {
-    type Parser = TupleParser0;
+    type Parser = DefaultValueParser<()>;
+}
+
+impl<Ctx, T> Parsable<Ctx> for PhantomData<T> {
+    type Parser = DefaultValueParser<PhantomData<T>>;
 }
 
 macro_rules! gen_parsable_tuple {
@@ -693,16 +701,34 @@ mod tests {
         }
     }
 
-    #[test]
-    fn parser_tuple_0() {
-        let parser = <() as Parsable<()>>::new_parser(());
-        assert_eq!(
-            Parser::<()>::parse(&parser, "any"),
-            ParseResult::Parsed((), "any")
-        );
-        assert_eq!(
-            Parser::<()>::complete(&parser, "any"),
-            CompletionResult::Consumed("any")
-        );
+    mod parse_default {
+        use super::*;
+        use std::marker::PhantomData;
+
+        #[test]
+        fn parser_tuple_0() {
+            let parser = <() as Parsable<()>>::new_parser(());
+            assert_eq!(
+                Parser::<()>::parse(&parser, "any"),
+                ParseResult::Parsed((), "any")
+            );
+            assert_eq!(
+                Parser::<()>::complete(&parser, "any"),
+                CompletionResult::Consumed("any")
+            );
+        }
+
+        #[test]
+        fn parser_phantom_data() {
+            let parser = <PhantomData<u8> as Parsable<()>>::new_parser(());
+            assert_eq!(
+                Parser::<()>::parse(&parser, "any"),
+                ParseResult::Parsed(PhantomData, "any")
+            );
+            assert_eq!(
+                Parser::<()>::complete(&parser, "any"),
+                CompletionResult::Consumed("any")
+            );
+        }
     }
 }
