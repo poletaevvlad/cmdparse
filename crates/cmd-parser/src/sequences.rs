@@ -1,3 +1,8 @@
+use std::cmp::Ord;
+use std::collections::{BTreeSet, HashSet, LinkedList, VecDeque};
+use std::hash::Hash;
+use std::marker::PhantomData;
+
 use crate::error::{ParseError, ParseErrorKind};
 use crate::tokens::{has_tokens, skip_ws, take_token, Token};
 use crate::{CompletionResult, Parsable, ParseResult, Parser};
@@ -53,33 +58,83 @@ pub fn complete_inner<'a, Ctx, P: Parser<Ctx>>(
     }
 }
 
-pub struct VecParser<Ctx, T: Parsable<Ctx>> {
-    inner_parser: T::Parser,
+pub trait ParsableCollection<Ctx> {
+    type Item: Parsable<Ctx>;
+    fn append(&mut self, item: Self::Item);
 }
 
-impl<Ctx, T: Parsable<Ctx> + std::fmt::Debug> Parser<Ctx> for VecParser<Ctx, T> {
-    type Value = Vec<T>;
+macro_rules! impl_parsable_collection {
+    ($ty:ty $(where T: $bound_1:ident $(+ $bound:ident)*)? { $append:item }) => {
+        impl<Ctx, T: Parsable<Ctx> $(+ $bound_1 $(+ $bound)*)?> ParsableCollection<Ctx> for $ty {
+            type Item = T;
+            $append
+        }
+
+        impl<Ctx, T: Parsable<Ctx> $(+ $bound_1 $(+ $bound)*)?> Parsable<Ctx> for $ty {
+            type Parser = CollectionParser<Ctx, Self>;
+        }
+    };
+}
+
+impl_parsable_collection! {Vec<T> {
+   fn append(&mut self, item: T) {
+     self.push(item);
+   }
+}}
+
+impl_parsable_collection! {VecDeque<T> {
+   fn append(&mut self, item: T) {
+     self.push_back(item);
+   }
+}}
+
+impl_parsable_collection! {LinkedList<T> {
+   fn append(&mut self, item: T) {
+     self.push_back(item);
+   }
+}}
+
+impl_parsable_collection! {HashSet<T> where T: Eq + Hash {
+   fn append(&mut self, item: T) {
+     self.insert(item);
+   }
+}}
+
+impl_parsable_collection! {BTreeSet<T> where T: Eq + Hash + Ord {
+   fn append(&mut self, item: T) {
+     self.insert(item);
+   }
+}}
+
+pub struct CollectionParser<Ctx, C: ParsableCollection<Ctx>> {
+    _collection_phanton: PhantomData<C>,
+    inner_parser: <C::Item as Parsable<Ctx>>::Parser,
+}
+
+impl<Ctx, C: ParsableCollection<Ctx> + Default> Parser<Ctx> for CollectionParser<Ctx, C> {
+    type Value = C;
 
     fn create(ctx: Ctx) -> Self {
-        VecParser {
-            inner_parser: T::new_parser(ctx),
+        CollectionParser {
+            _collection_phanton: PhantomData,
+            inner_parser: <C::Item as Parsable<Ctx>>::new_parser(ctx),
         }
     }
 
     fn parse<'a>(&self, mut input: &'a str) -> ParseResult<'a, Self::Value> {
-        let mut result = Vec::new();
+        let mut is_first = true;
+        let mut result = C::default();
         while has_tokens(input) {
             let parsed = parse_inner(input, &self.inner_parser);
-            println!("{:?}", parsed);
             match parsed {
                 ParseResult::Parsed(value, remaining) => {
                     input = remaining;
-                    result.push(value);
+                    result.append(value);
                 }
                 ParseResult::Unrecognized(err)
                     if err.kind() == ParseErrorKind::UnknownAttribute =>
                 {
-                    if result.is_empty() {
+                    if is_first {
                         return ParseResult::Unrecognized(err);
                     }
                     break;
@@ -88,6 +143,7 @@ impl<Ctx, T: Parsable<Ctx> + std::fmt::Debug> Parser<Ctx> for VecParser<Ctx, T> 
                     return ParseResult::Failed(err)
                 }
             }
+            is_first = false;
         }
         ParseResult::Parsed(result, input)
     }
@@ -105,10 +161,6 @@ impl<Ctx, T: Parsable<Ctx> + std::fmt::Debug> Parser<Ctx> for VecParser<Ctx, T> 
         }
         CompletionResult::Consumed(input)
     }
-}
-
-impl<Ctx, T: Parsable<Ctx> + std::fmt::Debug> Parsable<Ctx> for Vec<T> {
-    type Parser = VecParser<Ctx, T>;
 }
 
 pub struct TupleParser0;
@@ -286,21 +338,21 @@ impl<Ctx, T: Parsable<Ctx>> Parsable<Ctx> for Option<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::VecParser;
     use crate::{CompletionResult, Parsable, ParseError, ParseResult, Parser};
 
-    mod vec_parser {
+    mod collection_parser {
         use super::*;
+        use std::collections::{BTreeSet, HashSet, LinkedList, VecDeque};
 
         #[test]
         fn parse_empty() {
-            let parser: VecParser<(), i32> = VecParser::create(());
+            let parser = <Vec<i32> as Parsable<()>>::new_parser(());
             assert_eq!(parser.parse(""), ParseResult::Parsed(vec![], ""));
         }
 
         #[test]
-        fn parse_flat() {
-            let parser: VecParser<(), i32> = VecParser::create(());
+        fn parse_flat_vec() {
+            let parser = <Vec<i32> as Parsable<()>>::new_parser(());
             assert_eq!(
                 parser.parse("1 2 3 4 5"),
                 ParseResult::Parsed(vec![1, 2, 3, 4, 5], "")
@@ -308,8 +360,44 @@ mod tests {
         }
 
         #[test]
+        fn parse_flat_vec_deque() {
+            let parser = <VecDeque<i32> as Parsable<()>>::new_parser(());
+            assert_eq!(
+                parser.parse("1 2 3 4 5"),
+                ParseResult::Parsed(VecDeque::from([1, 2, 3, 4, 5]), "")
+            );
+        }
+
+        #[test]
+        fn parse_flat_linked_list() {
+            let parser = <LinkedList<i32> as Parsable<()>>::new_parser(());
+            assert_eq!(
+                parser.parse("1 2 3 4 5"),
+                ParseResult::Parsed(LinkedList::from([1, 2, 3, 4, 5]), "")
+            );
+        }
+
+        #[test]
+        fn parse_flat_hash_set() {
+            let parser = <HashSet<i32> as Parsable<()>>::new_parser(());
+            assert_eq!(
+                parser.parse("1 2 3 4 5 3 4"),
+                ParseResult::Parsed(HashSet::from([1, 2, 3, 4, 5]), "")
+            );
+        }
+
+        #[test]
+        fn parse_flat_btree_set() {
+            let parser = <BTreeSet<i32> as Parsable<()>>::new_parser(());
+            assert_eq!(
+                parser.parse("1 2 3 4 5 3 4"),
+                ParseResult::Parsed(BTreeSet::from([1, 2, 3, 4, 5]), "")
+            );
+        }
+
+        #[test]
         fn parse_error() {
-            let parser: VecParser<(), i32> = VecParser::create(());
+            let parser = <Vec<i32> as Parsable<()>>::new_parser(());
             assert_eq!(
                 parser.parse("1 2 nan 3 4"),
                 ParseResult::Failed(ParseError::token_parse("nan".into(), None, "integer"))
@@ -318,7 +406,7 @@ mod tests {
 
         #[test]
         fn parse_nested() {
-            let parser: VecParser<(), Vec<i32>> = VecParser::create(());
+            let parser = <Vec<Vec<i32>> as Parsable<()>>::new_parser(());
             assert_eq!(
                 parser.parse("() (1 2 3) 4 5 6 7"),
                 ParseResult::Parsed(vec![vec![], vec![1, 2, 3], vec![4, 5, 6, 7]], "")
@@ -327,7 +415,7 @@ mod tests {
 
         #[test]
         fn suggest_first() {
-            let parser: VecParser<(), bool> = VecParser::create(());
+            let parser = <Vec<bool> as Parsable<()>>::new_parser(());
             assert_eq!(
                 parser.complete("tr"),
                 CompletionResult::Suggestions(vec!["ue".into()])
@@ -336,7 +424,7 @@ mod tests {
 
         #[test]
         fn suggest_not_first() {
-            let parser: VecParser<(), bool> = VecParser::create(());
+            let parser = <Vec<bool> as Parsable<()>>::new_parser(());
             assert_eq!(
                 parser.complete("true fa"),
                 CompletionResult::Suggestions(vec!["lse".into()])
@@ -345,7 +433,7 @@ mod tests {
 
         #[test]
         fn suggestion_consumed() {
-            let parser: VecParser<(), bool> = VecParser::create(());
+            let parser = <Vec<bool> as Parsable<()>>::new_parser(());
             assert_eq!(
                 parser.complete("true false "),
                 CompletionResult::Consumed("")
@@ -354,7 +442,7 @@ mod tests {
 
         #[test]
         fn suggestion_nested() {
-            let parser: VecParser<(), Vec<bool>> = VecParser::create(());
+            let parser = <Vec<Vec<bool>> as Parsable<()>>::new_parser(());
             assert_eq!(
                 parser.complete("(true false) (false) (fal"),
                 CompletionResult::Suggestions(vec!["se".into()]),
@@ -363,7 +451,7 @@ mod tests {
 
         #[test]
         fn suggestion_nested_closed() {
-            let parser: VecParser<(), Vec<bool>> = VecParser::create(());
+            let parser = <Vec<Vec<bool>> as Parsable<()>>::new_parser(());
             assert_eq!(
                 parser.complete("(true false) (false) (fal)"),
                 CompletionResult::Consumed(""),
@@ -372,7 +460,7 @@ mod tests {
 
         #[test]
         fn stops_on_unknown_attribute() {
-            let parser: VecParser<(), i32> = VecParser::create(());
+            let parser = <Vec<i32> as Parsable<()>>::new_parser(());
             assert_eq!(
                 parser.parse("1 2 3 --unknown 4 5"),
                 ParseResult::Parsed(vec![1, 2, 3], "--unknown 4 5"),
@@ -385,7 +473,7 @@ mod tests {
 
         #[test]
         fn stops_on_unknown_attribute_with_nested_vecs() {
-            let parser: VecParser<(), Vec<i32>> = VecParser::create(());
+            let parser = <Vec<Vec<i32>> as Parsable<()>>::new_parser(());
             assert_eq!(
                 parser.parse("(1 2) 3 --unknown 4 5"),
                 ParseResult::Parsed(vec![vec![1, 2], vec![3]], "--unknown 4 5"),
@@ -398,7 +486,7 @@ mod tests {
 
         #[test]
         fn stops_on_unknown_attribute_on_first_nested_vec() {
-            let parser: VecParser<(), Vec<i32>> = VecParser::create(());
+            let parser = <Vec<Vec<i32>> as Parsable<()>>::new_parser(());
             assert_eq!(
                 parser.parse("--unknown (1 2) (3 4) 5"),
                 ParseResult::Unrecognized(ParseError::unknown_attribute("unknown")),
@@ -411,7 +499,7 @@ mod tests {
 
         #[test]
         fn stops_on_unknown_attribute_on_first_nested_vec_inside_parenthesis() {
-            let parser: VecParser<(), Vec<i32>> = VecParser::create(());
+            let parser = <Vec<Vec<i32>> as Parsable<()>>::new_parser(());
             assert_eq!(
                 parser.parse("(--unknown 1 2) (3 4) 5"),
                 ParseResult::Failed(ParseError::unknown_attribute("unknown")),
@@ -424,7 +512,7 @@ mod tests {
 
         #[test]
         fn fails_on_unknown_attribure_with_parenthesis() {
-            let parser: VecParser<(), Vec<i32>> = VecParser::create(());
+            let parser = <Vec<Vec<i32>> as Parsable<()>>::new_parser(());
             assert_eq!(
                 parser.parse("(1 2) (3 --unknown) 4 5"),
                 ParseResult::Failed(ParseError::unknown_attribute("unknown")),
