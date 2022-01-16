@@ -11,7 +11,7 @@ fn complete_token_single(input: &str) -> CompletionResult<'_> {
         return CompletionResult::empty();
     }
     if input.starts_with("--") {
-        return CompletionResult::Unrecognized(input);
+        return CompletionResult::Unrecognized;
     }
     let remaining = skip_token_no_ws(input);
     match remaining.chars().next() {
@@ -279,7 +279,7 @@ mod tests {
             let parser = IntegerParser::<i16>::create(());
             assert_eq!(
                 Parser::<()>::complete(&parser, "--attribute"),
-                CompletionResult::Unrecognized("--attribute"),
+                CompletionResult::Unrecognized,
             );
         }
 

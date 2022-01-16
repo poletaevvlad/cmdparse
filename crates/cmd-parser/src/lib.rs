@@ -32,7 +32,7 @@ impl<'a, T> ParseResult<'a, T> {
 #[derive(Debug, PartialEq)]
 pub enum CompletionResult<'a> {
     Consumed(&'a str),
-    Unrecognized(&'a str),
+    Unrecognized,
     Suggestions(Vec<Cow<'static, str>>),
 }
 

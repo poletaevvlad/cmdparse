@@ -45,7 +45,7 @@ pub fn complete_inner<'a, Ctx, P: Parser<Ctx>>(
                 let remaining = remaining.strip_prefix(')').unwrap_or(remaining);
                 CompletionResult::Consumed(remaining)
             }
-            CompletionResult::Unrecognized(_) => CompletionResult::empty(),
+            CompletionResult::Unrecognized => CompletionResult::empty(),
             result => result,
         }
     } else {
@@ -97,10 +97,8 @@ impl<Ctx, T: Parsable<Ctx> + std::fmt::Debug> Parser<Ctx> for VecParser<Ctx, T> 
         while has_tokens(input) {
             match complete_inner(input, &self.inner_parser) {
                 CompletionResult::Consumed(remaining) => input = remaining,
-                result @ CompletionResult::Unrecognized(_) if is_first => return result,
-                CompletionResult::Unrecognized(remaining) => {
-                    return CompletionResult::Consumed(remaining)
-                }
+                result @ CompletionResult::Unrecognized if is_first => return result,
+                CompletionResult::Unrecognized => return CompletionResult::Consumed(input),
                 result @ CompletionResult::Suggestions(_) => return result,
             }
             is_first = false;
@@ -165,12 +163,12 @@ macro_rules! gen_parsable_tuple {
                 match complete_inner(input, &self.$param_first) {
                     CompletionResult::Consumed(remaining) => input = remaining,
                     result @ CompletionResult::Suggestions(_) => return result,
-                    result @ CompletionResult::Unrecognized(_) => return result,
+                    result @ CompletionResult::Unrecognized => return result,
                 }
                 $(
                     match complete_inner(input, &self.$param) {
                         CompletionResult::Consumed(remaining) => input = remaining,
-                        CompletionResult::Unrecognized(_) => return CompletionResult::empty(),
+                        CompletionResult::Unrecognized => return CompletionResult::empty(),
                         result => return result,
                     }
                 )*
@@ -385,7 +383,7 @@ mod tests {
             );
             assert_eq!(
                 parser.complete("--unknown (1 2) (3 4) 5"),
-                CompletionResult::Unrecognized("--unknown (1 2) (3 4) 5"),
+                CompletionResult::Unrecognized,
             );
         }
 
@@ -458,10 +456,7 @@ mod tests {
                 parser.parse("--unknown"),
                 ParseResult::Unrecognized(ParseError::unknown_attribute("unknown")),
             );
-            assert_eq!(
-                parser.complete("--unknown"),
-                CompletionResult::Unrecognized("--unknown"),
-            );
+            assert_eq!(parser.complete("--unknown"), CompletionResult::Unrecognized,);
         }
 
         #[test]
