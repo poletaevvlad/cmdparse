@@ -1,7 +1,7 @@
 mod error;
 mod primitives;
 mod sequences;
-mod utils;
+mod tokens;
 
 pub use error::ParseError;
 use std::borrow::Cow;

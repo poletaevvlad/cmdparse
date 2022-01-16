@@ -1,5 +1,5 @@
 use crate::error::{ParseError, ParseErrorKind};
-use crate::utils::{has_tokens, skip_ws, take_token, Token};
+use crate::tokens::{has_tokens, skip_ws, take_token, Token};
 use crate::{CompletionResult, Parsable, ParseResult, Parser};
 
 pub fn parse_inner<'a, Ctx, P: Parser<Ctx>>(
