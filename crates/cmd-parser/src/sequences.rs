@@ -1,6 +1,57 @@
-use crate::error::ParseErrorKind;
-use crate::utils::{complete_inner, has_tokens, parse_inner};
+use crate::error::{ParseError, ParseErrorKind};
+use crate::utils::{has_tokens, skip_ws, take_token, Token};
 use crate::{CompletionResult, Parsable, ParseResult, Parser};
+
+pub fn parse_inner<'a, Ctx, P: Parser<Ctx>>(
+    mut input: &'a str,
+    parser: &P,
+) -> ParseResult<'a, P::Value> {
+    input = skip_ws(input);
+
+    if let Some(input) = input.strip_prefix('(') {
+        let (result, mut remaining) = match parser.parse(input) {
+            ParseResult::Parsed(result, remaining) => (result, remaining),
+            ParseResult::Unrecognized(error) | ParseResult::Failed(error) => {
+                return ParseResult::Failed(error)
+            }
+        };
+        if remaining.starts_with(')') {
+            remaining = skip_ws(&remaining[1..]);
+        } else {
+            let (token, _) = take_token(remaining);
+            match token {
+                Token::Text(text) if text.is_empty() => {}
+                Token::Text(text) => return ParseError::unexpected_token(text).into(),
+                Token::Attribute(attribute) => {
+                    return ParseError::unknown_attribute(attribute).into()
+                }
+            }
+        }
+        ParseResult::Parsed(result, remaining)
+    } else {
+        parser.parse(input)
+    }
+}
+
+pub fn complete_inner<'a, Ctx, P: Parser<Ctx>>(
+    mut input: &'a str,
+    parser: &P,
+) -> CompletionResult<'a> {
+    input = skip_ws(input);
+
+    if let Some(input) = input.strip_prefix('(') {
+        match parser.complete(input) {
+            CompletionResult::Consumed(remaining) => {
+                let remaining = remaining.strip_prefix(')').unwrap_or(remaining);
+                CompletionResult::Consumed(remaining)
+            }
+            CompletionResult::Unrecognized(_) => CompletionResult::empty(),
+            result => result,
+        }
+    } else {
+        parser.complete(input)
+    }
+}
 
 pub struct VecParser<Ctx, T: Parsable<Ctx>> {
     inner_parser: T::Parser,
