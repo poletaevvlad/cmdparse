@@ -7,23 +7,24 @@ use quote::{format_ident, quote};
 use schema::{ParsableContext, ParsableStruct};
 use syn::spanned::Spanned;
 
-fn derive_struct(name: syn::Ident, data: syn::DataStruct) -> Result<TokenStream2, syn::Error> {
+fn derive_struct(type_name: syn::Ident, data: syn::DataStruct) -> Result<TokenStream2, syn::Error> {
     let mut context = ParsableContext::default();
     let _parsable_struct = ParsableStruct::from_fields(&mut context, &data.fields)?;
-    let parser_name = format_ident!("{}Parser", name);
+    let parser_name = format_ident!("{}Parser", type_name);
 
     let parsers_definition = gen::parsers_definition(&context);
+    let parsers_initialization = gen::parsers_initialization(&context);
+    let where_clause = context.generics.where_clause.as_ref();
+    // let type_use_generics = gen::generics::type_use(&context.generics);
 
     Ok(quote! {
-        struct #parser_name {
-            #parsers_definition
-        }
+        struct<Ctx> #parser_name #where_clause { #parsers_definition }
 
-        impl<Ctx> ::cmd_parser::Parser<Ctx> for #parser_name {
-            type Value = #name;
+        impl<Ctx> ::cmd_parser::Parser<Ctx> for #parser_name #where_clause {
+            type Value = #type_name;
 
             fn create(ctx: Ctx) -> Self {
-                #parser_name
+                #parser_name { #parsers_initialization }
             }
 
             fn parse<'a>(&self, input: &'a str) -> ::cmd_parser::ParseResult<'a, Self::Value> {
@@ -35,7 +36,7 @@ fn derive_struct(name: syn::Ident, data: syn::DataStruct) -> Result<TokenStream2
             }
         }
 
-        impl<Ctx> ::cmd_parser::Parsable<Ctx> for #name {
+        impl<Ctx> ::cmd_parser::Parsable<Ctx> for #type_name #where_clause {
             type Parser = #parser_name<Ctx>;
         }
     })

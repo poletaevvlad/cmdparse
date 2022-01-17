@@ -33,26 +33,16 @@ pub(crate) fn parsers_initialization(ctx: &ParsableContext) -> TokenStream {
 pub(crate) mod generics {
     use super::*;
 
-    fn format_generic(param: &syn::GenericParam) -> TokenStream {
-        match param {
-            syn::GenericParam::Type(ty) => {
-                let ident = &ty.ident;
-                quote! {#ident}
-            }
-            syn::GenericParam::Lifetime(lifetime) => {
-                let lifetime = &lifetime.lifetime;
-                quote! {#lifetime}
-            }
-            syn::GenericParam::Const(r#const) => {
-                let ident = &r#const.ident;
-                quote! {#ident}
-            }
+    fn quote_generics(params: &[TokenStream]) -> TokenStream {
+        if params.is_empty() {
+            quote! {}
+        } else {
+            quote! {<#(#params),*>}
         }
     }
 
     pub(crate) fn usage(ctx: &ParsableContext, include_ctx: bool) -> TokenStream {
         let mut params = Vec::with_capacity(ctx.generics.params.len() + 1);
-
         params.extend(ctx.generics.lifetimes().map(|lifetime| {
             let lifetime = &lifetime.lifetime;
             quote! {#lifetime}
@@ -69,14 +59,42 @@ pub(crate) mod generics {
                 .params
                 .iter()
                 .filter(|param| !matches!(param, syn::GenericParam::Lifetime(_)))
-                .map(format_generic),
+                .map(|param| {
+                    let ident = match param {
+                        syn::GenericParam::Lifetime(_) => unreachable!(),
+                        syn::GenericParam::Type(ty) => &ty.ident,
+                        syn::GenericParam::Const(r#const) => &r#const.ident,
+                    };
+                    quote! {#ident}
+                }),
         );
+        quote_generics(&params)
+    }
 
-        if params.is_empty() {
-            quote! {}
-        } else {
-            quote! {<#(#params),*>}
+    pub(crate) fn definition(ctx: &ParsableContext, include_ctx: bool) -> TokenStream {
+        let mut params = Vec::with_capacity(ctx.generics.params.len() + 1);
+        params.extend(ctx.generics.lifetimes().map(|lifetime| {
+            quote! {#lifetime}
+        }));
+
+        if include_ctx {
+            match ctx.context_type {
+                Some(ContextType::Generic(ref bounds)) => {
+                    params.push(quote! {CmdParserCtx: #bounds});
+                }
+                Some(ContextType::Concrete(_)) => {}
+                None => params.push(quote! {CmdParserCtx}),
+            }
         }
+
+        params.extend(
+            ctx.generics
+                .params
+                .iter()
+                .filter(|param| !matches!(param, syn::GenericParam::Lifetime(_)))
+                .map(|param| quote! {#param}),
+        );
+        quote_generics(&params)
     }
 }
 
@@ -141,8 +159,10 @@ mod tests {
 
         fn make_context_with_generic() -> ParsableContext<'static> {
             ParsableContext {
-                generics: syn::parse2(quote! {<'a, 'b, T: Iterator<Item = u8>, const X: u8 = 5>})
-                    .unwrap(),
+                generics: syn::parse2(
+                    quote! {<'a, 'b: 'a, T: Iterator<Item = u8>, const X: u8 = 5>},
+                )
+                .unwrap(),
                 ..Default::default()
             }
         }
@@ -152,6 +172,15 @@ mod tests {
             let ctx = make_context_with_generic();
             assert_tokens_eq(usage(&ctx, false), quote! {<'a, 'b, T, X>});
             assert_tokens_eq(usage(&ctx, true), quote! {<'a, 'b, CmdParserCtx, T, X>});
+
+            assert_tokens_eq(
+                definition(&ctx, false),
+                quote! {<'a, 'b: 'a, T:Iterator<Item = u8>, const X: u8 = 5>},
+            );
+            assert_tokens_eq(
+                definition(&ctx, true),
+                quote! {<'a, 'b: 'a, CmdParserCtx, T:Iterator<Item = u8>, const X: u8 = 5>},
+            );
         }
 
         #[test]
@@ -159,6 +188,9 @@ mod tests {
             let ctx = ParsableContext::default();
             assert_tokens_eq(usage(&ctx, false), quote! {});
             assert_tokens_eq(usage(&ctx, true), quote! {<CmdParserCtx>});
+
+            assert_tokens_eq(definition(&ctx, false), quote! {});
+            assert_tokens_eq(definition(&ctx, true), quote! {<CmdParserCtx>});
         }
 
         #[test]
@@ -167,6 +199,15 @@ mod tests {
             ctx.context_type = Some(ContextType::Concrete(syn::parse2(quote! {u8}).unwrap()));
             assert_tokens_eq(usage(&ctx, false), quote! {<'a, 'b, T, X>});
             assert_tokens_eq(usage(&ctx, true), quote! {<'a, 'b, T, X>});
+
+            assert_tokens_eq(
+                definition(&ctx, false),
+                quote! {<'a, 'b: 'a, T:Iterator<Item = u8>, const X: u8 = 5>},
+            );
+            assert_tokens_eq(
+                definition(&ctx, true),
+                quote! {<'a, 'b: 'a, T:Iterator<Item = u8>, const X: u8 = 5>},
+            );
         }
 
         #[test]
@@ -177,6 +218,9 @@ mod tests {
             };
             assert_tokens_eq(usage(&ctx, false), quote! {});
             assert_tokens_eq(usage(&ctx, true), quote! {});
+
+            assert_tokens_eq(definition(&ctx, false), quote! {});
+            assert_tokens_eq(definition(&ctx, true), quote! {});
         }
 
         #[test]
@@ -190,6 +234,15 @@ mod tests {
 
             assert_tokens_eq(usage(&ctx, false), quote! {<'a, 'b, T, X>});
             assert_tokens_eq(usage(&ctx, true), quote! {<'a, 'b, CmdParserCtx, T, X>});
+
+            assert_tokens_eq(
+                definition(&ctx, false),
+                quote! {<'a, 'b: 'a, T:Iterator<Item = u8>, const X: u8 = 5>},
+            );
+            assert_tokens_eq(
+                definition(&ctx, true),
+                quote! {<'a, 'b: 'a, CmdParserCtx: Send + Sync, T:Iterator<Item = u8>, const X: u8 = 5>},
+            );
         }
 
         #[test]
@@ -205,6 +258,9 @@ mod tests {
 
             assert_tokens_eq(usage(&ctx, false), quote! {});
             assert_tokens_eq(usage(&ctx, true), quote! {<CmdParserCtx>});
+
+            assert_tokens_eq(definition(&ctx, false), quote! {});
+            assert_tokens_eq(definition(&ctx, true), quote! {<CmdParserCtx: Send + Sync>});
         }
     }
 }
