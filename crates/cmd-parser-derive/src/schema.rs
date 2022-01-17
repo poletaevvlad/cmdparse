@@ -16,8 +16,15 @@ impl ParserIndex {
     }
 }
 
+pub(crate) enum ContextType {
+    Generic(syn::punctuated::Punctuated<syn::TypeParamBound, syn::token::Add>),
+    Concrete(syn::Type),
+}
+
 #[derive(Default)]
 pub(crate) struct ParsableContext<'a> {
+    pub(crate) context_type: Option<ContextType>,
+    pub(crate) generics: syn::Generics,
     pub(crate) parsers: LinkedHashMap<Parser<'a>, ParserIndex>,
 }
 
