@@ -127,6 +127,7 @@ pub(crate) fn implementation(
     let parsers_definition = parsers::definition(ctx);
     let parsers_initialization = parsers::initialization(ctx);
     let where_clause = ctx.generics.where_clause.as_ref();
+    let ctx_generic = ctx_generic(ctx);
 
     let type_generics = generics::usage(ctx, false);
     let ctx_generics = generics::context_usage(ctx);
@@ -137,10 +138,10 @@ pub(crate) fn implementation(
     quote! {
         struct #parser_struct_generics #parser_name #where_clause { #parsers_definition }
 
-        impl #trait_generics ::cmd_parser::Parser #ctx_generics for #parser_name #where_clause {
+        impl #trait_generics ::cmd_parser::Parser #ctx_generics for #parser_name #parser_usage_generics #where_clause {
             type Value = #type_name #type_generics;
 
-            fn create(ctx: Ctx) -> Self {
+            fn create(ctx: #ctx_generic) -> Self {
                 #parser_name { #parsers_initialization }
             }
 
@@ -166,7 +167,9 @@ mod tests {
     use quote::quote;
 
     fn assert_tokens_eq(stream1: TokenStream, stream2: TokenStream) {
-        assert_eq!(format!("{:?}", stream1), format!("{:?}", stream2));
+        let stream1_formatted = format!("{}", stream1).replace(" ", "");
+        let stream2_formatted = format!("{}", stream2).replace(" ", "");
+        assert_eq!(stream1_formatted, stream2_formatted);
     }
 
     mod parsers {
@@ -350,6 +353,142 @@ mod tests {
 
             assert_tokens_eq(definition(&ctx, false), quote! {});
             assert_tokens_eq(definition(&ctx, true), quote! {<CmdParserCtx: Send + Sync>});
+        }
+    }
+
+    mod sceleton {
+        use super::super::implementation;
+        use super::*;
+        use quote::format_ident;
+
+        #[test]
+        fn no_parsers() {
+            let ctx = ParsableContext::default();
+            let result = implementation(
+                format_ident!("NoFields"),
+                &ctx,
+                quote! {parse!()},
+                quote! {complete!()},
+            );
+
+            let expected = quote! {
+                struct NoFieldsParser {}
+
+                impl<CmdParserCtx> ::cmd_parser::Parser<CmdParserCtx> for NoFieldsParser {
+                    type Value = NoFields;
+
+                    fn create(ctx: CmdParserCtx) -> Self {
+                        NoFieldsParser{}
+                    }
+                    fn parse<'a>(&self, input: &'a str) -> ::cmd_parser::ParseResult<'a, Self::Value> { parse!() }
+                    fn complete<'a>(&self, input: &'a str) -> ::cmd_parser::CompletionResult<'a> { complete!() }
+                }
+
+                impl<CmdParserCtx> ::cmd_parser::Parsable<CmdParserCtx> for NoFields {
+                    type Parser = NoFieldsParser;
+                }
+            };
+
+            assert_tokens_eq(result, expected);
+        }
+
+        #[test]
+        fn parsers_concrete_ctx() {
+            let ty: syn::Type = syn::parse2(quote! {u8}).unwrap();
+
+            let mut ctx = ParsableContext {
+                context_type: Some(ContextType::Concrete(
+                    syn::parse2(quote! {CustomCtx}).unwrap(),
+                )),
+                ..Default::default()
+            };
+            ctx.push_parser(Parser::Explicit(
+                syn::parse2(quote! {super::Parser}).unwrap(),
+            ));
+            ctx.push_parser(Parser::FromParsable(&ty));
+            let result = implementation(
+                format_ident!("WithConcreteCtx"),
+                &ctx,
+                quote! {parse!()},
+                quote! {complete!()},
+            );
+
+            let expected = quote! {
+                struct WithConcreteCtxParser {
+                    parser_0: super::Parser,
+                    parser_1: <u8 as ::cmd_parser::Parsable<CustomCtx>>::Parser,
+                }
+
+                impl ::cmd_parser::Parser<CustomCtx> for WithConcreteCtxParser {
+                    type Value = WithConcreteCtx;
+
+                    fn create(ctx: CustomCtx) -> Self {
+                        WithConcreteCtxParser{
+                            parser_0: <super::Parser as ::cmd_parser::Parser<CustomCtx>>::create(ctx),
+                            parser_1: <u8 as ::cmd_parser::Parsable<CustomCtx>>::new_parser(ctx),
+                        }
+                    }
+                    fn parse<'a>(&self, input: &'a str) -> ::cmd_parser::ParseResult<'a, Self::Value> { parse!() }
+                    fn complete<'a>(&self, input: &'a str) -> ::cmd_parser::CompletionResult<'a> { complete!() }
+                }
+
+                impl ::cmd_parser::Parsable<CustomCtx> for WithConcreteCtx {
+                    type Parser = WithConcreteCtxParser;
+                }
+            };
+
+            assert_tokens_eq(result, expected);
+        }
+
+        #[test]
+        fn with_generics() {
+            let mut ctx = ParsableContext {
+                context_type: Some(ContextType::Generic(
+                    syn::parse2::<syn::TypeParam>(quote! {T: Send + Sync})
+                        .unwrap()
+                        .bounds,
+                )),
+                generics: syn::parse2(quote! {<'a, T: Parsable<CmdParserCtx>>}).unwrap(),
+                ..Default::default()
+            };
+            ctx.push_parser(Parser::Explicit(
+                syn::parse2(quote! {super::ParserA<'a, T>}).unwrap(),
+            ));
+            ctx.push_parser(Parser::Explicit(
+                syn::parse2(quote! {super::ParserB<'a>}).unwrap(),
+            ));
+            let result = implementation(
+                format_ident!("WithGenerics"),
+                &ctx,
+                quote! {parse!()},
+                quote! {complete!()},
+            );
+
+            let expected = quote! {
+                struct<'a, CmdParserCtx: Send + Sync, T: Parsable<CmdParserCtx>> WithGenericsParser {
+                    parser_0: super::ParserA<'a, T>,
+                    parser_1: super::ParserB<'a>,
+                }
+
+                impl<'a, CmdParserCtx: Send + Sync, T: Parsable<CmdParserCtx>> ::cmd_parser::Parser<CmdParserCtx> for WithGenericsParser<'a, CmdParserCtx, T> {
+                    type Value = WithGenerics<'a, T>;
+
+                    fn create(ctx: CmdParserCtx) -> Self {
+                        WithGenericsParser{
+                            parser_0: <super::ParserA<'a, T> as ::cmd_parser::Parser<CmdParserCtx>>::create(ctx),
+                            parser_1: <super::ParserB<'a> as ::cmd_parser::Parser<CmdParserCtx>>::create(ctx),
+                        }
+                    }
+                    fn parse<'a>(&self, input: &'a str) -> ::cmd_parser::ParseResult<'a, Self::Value> { parse!() }
+                    fn complete<'a>(&self, input: &'a str) -> ::cmd_parser::CompletionResult<'a> { complete!() }
+                }
+
+                impl<'a, CmdParserCtx: Send + Sync, T: Parsable<CmdParserCtx>> ::cmd_parser::Parsable<CmdParserCtx> for WithGenerics<'a, T> {
+                    type Parser = WithGenericsParser<'a, CmdParserCtx, T>;
+                }
+            };
+
+            assert_tokens_eq(result, expected);
         }
     }
 }
