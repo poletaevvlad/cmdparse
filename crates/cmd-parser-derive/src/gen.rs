@@ -2,32 +2,45 @@ use crate::schema::{ContextType, ParsableContext, Parser};
 use proc_macro2::TokenStream;
 use quote::quote;
 
-pub(crate) fn parsers_definition(ctx: &ParsableContext) -> TokenStream {
-    let definitions = ctx.parsers.iter().map(|(parser, index)| {
-        let ident = index.ident();
-        match parser {
-            Parser::Explicit(explicit) => quote! { #ident: #explicit },
-            Parser::FromParsable(ty) => {
-                quote! { #ident: <#ty as ::cmd_parser::Parsable<CmdParserCtx>>::Parser }
-            }
-        }
-    });
-    quote! { #(#definitions,)* }
-}
+pub(crate) mod parsers {
+    use super::*;
 
-pub(crate) fn parsers_initialization(ctx: &ParsableContext) -> TokenStream {
-    let initializations = ctx.parsers.iter().map(|(parser, index)| {
-        let ident = index.ident();
-        match parser {
-            Parser::Explicit(explicit) => quote! {
-                #ident: <#explicit as ::cmd_parser::Parser<CmdParserCtx>>::create(ctx)
-            },
-            Parser::FromParsable(ty) => quote! {
-                #ident: <#ty as ::cmd_parser::Parsable<CmdParserCtx>>::new_parser(ctx)
-            },
+    fn generic(ctx: &ParsableContext) -> TokenStream {
+        match &ctx.context_type {
+            Some(ContextType::Generic(_)) | None => quote! {CmdParserCtx},
+            Some(ContextType::Concrete(ty)) => quote! {#ty},
         }
-    });
-    quote! { #(#initializations,)* }
+    }
+
+    pub(crate) fn definition(ctx: &ParsableContext) -> TokenStream {
+        let generic = generic(ctx);
+        let definitions = ctx.parsers.iter().map(|(parser, index)| {
+            let ident = index.ident();
+            match parser {
+                Parser::Explicit(explicit) => quote! { #ident: #explicit },
+                Parser::FromParsable(ty) => {
+                    quote! { #ident: <#ty as ::cmd_parser::Parsable<#generic>>::Parser }
+                }
+            }
+        });
+        quote! { #(#definitions,)* }
+    }
+
+    pub(crate) fn initialization(ctx: &ParsableContext) -> TokenStream {
+        let generic = generic(ctx);
+        let initializations = ctx.parsers.iter().map(|(parser, index)| {
+            let ident = index.ident();
+            match parser {
+                Parser::Explicit(explicit) => quote! {
+                    #ident: <#explicit as ::cmd_parser::Parser<#generic>>::create(ctx)
+                },
+                Parser::FromParsable(ty) => quote! {
+                    #ident: <#ty as ::cmd_parser::Parsable<#generic>>::new_parser(ctx)
+                },
+            }
+        });
+        quote! { #(#initializations,)* }
+    }
 }
 
 pub(crate) mod generics {
@@ -100,7 +113,7 @@ pub(crate) mod generics {
 
 #[cfg(test)]
 mod tests {
-    use crate::schema::{ParsableContext, Parser};
+    use crate::schema::{ContextType, ParsableContext, Parser};
     use proc_macro2::TokenStream;
     use quote::quote;
 
@@ -108,19 +121,19 @@ mod tests {
         assert_eq!(format!("{:?}", stream1), format!("{:?}", stream2));
     }
 
-    mod parsers_definition_tests {
-        use super::super::{parsers_definition, parsers_initialization};
+    mod parsers {
+        use super::super::parsers::{definition, initialization};
         use super::*;
 
         #[test]
         fn empty() {
             let ctx = ParsableContext::default();
 
-            let defintion = parsers_definition(&ctx);
+            let defintion = definition(&ctx);
             let definition_expected = quote! {};
             assert_tokens_eq(defintion, definition_expected);
 
-            let initialization = parsers_initialization(&ctx);
+            let initialization = initialization(&ctx);
             let initialization_expected = quote! {};
             assert_tokens_eq(initialization, initialization_expected);
         }
@@ -135,26 +148,54 @@ mod tests {
             ));
             ctx.push_parser(Parser::FromParsable(&ty));
 
-            let definition = parsers_definition(&ctx);
+            let definition = definition(&ctx);
             let definition_expected = quote! {
                 parser_0: super::Parser,
                 parser_1: <u8 as ::cmd_parser::Parsable<CmdParserCtx>>::Parser,
             };
             assert_tokens_eq(definition, definition_expected);
 
-            let initialization = parsers_initialization(&ctx);
+            let initialization = initialization(&ctx);
             let initialization_expected = quote! {
                 parser_0: <super::Parser as ::cmd_parser::Parser<CmdParserCtx>>::create(ctx),
                 parser_1: <u8 as ::cmd_parser::Parsable<CmdParserCtx>>::new_parser(ctx),
             };
             assert_tokens_eq(initialization, initialization_expected);
         }
+
+        #[test]
+        fn with_parsers_and_concrete_generics() {
+            let ty: syn::Type = syn::parse2(quote! {u8}).unwrap();
+
+            let mut ctx = ParsableContext {
+                context_type: Some(ContextType::Concrete(
+                    syn::parse2(quote! {CustomCtx}).unwrap(),
+                )),
+                ..Default::default()
+            };
+            ctx.push_parser(Parser::Explicit(
+                syn::parse2(quote! {super::Parser}).unwrap(),
+            ));
+            ctx.push_parser(Parser::FromParsable(&ty));
+
+            let definition = definition(&ctx);
+            let definition_expected = quote! {
+                parser_0: super::Parser,
+                parser_1: <u8 as ::cmd_parser::Parsable<CustomCtx>>::Parser,
+            };
+            assert_tokens_eq(definition, definition_expected);
+
+            let initialization = initialization(&ctx);
+            let initialization_expected = quote! {
+                parser_0: <super::Parser as ::cmd_parser::Parser<CustomCtx>>::create(ctx),
+                parser_1: <u8 as ::cmd_parser::Parsable<CustomCtx>>::new_parser(ctx),
+            };
+            assert_tokens_eq(initialization, initialization_expected);
+        }
     }
 
     mod generics {
-        use crate::schema::ContextType;
-
-        use super::super::generics::*;
+        use super::super::generics::{definition, usage};
         use super::*;
 
         fn make_context_with_generic() -> ParsableContext<'static> {

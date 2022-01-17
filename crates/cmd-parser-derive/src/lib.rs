@@ -12,8 +12,8 @@ fn derive_struct(type_name: syn::Ident, data: syn::DataStruct) -> Result<TokenSt
     let _parsable_struct = ParsableStruct::from_fields(&mut context, &data.fields)?;
     let parser_name = format_ident!("{}Parser", type_name);
 
-    let parsers_definition = gen::parsers_definition(&context);
-    let parsers_initialization = gen::parsers_initialization(&context);
+    let parsers_definition = gen::parsers::definition(&context);
+    let parsers_initialization = gen::parsers::initialization(&context);
     let where_clause = context.generics.where_clause.as_ref();
     // let type_use_generics = gen::generics::type_use(&context.generics);
 
