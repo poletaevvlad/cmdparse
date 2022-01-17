@@ -1,6 +1,6 @@
 use crate::schema::{ContextType, ParsableContext, Parser};
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{format_ident, quote};
 
 fn ctx_generic(ctx: &ParsableContext) -> TokenStream {
     match &ctx.context_type {
@@ -9,7 +9,7 @@ fn ctx_generic(ctx: &ParsableContext) -> TokenStream {
     }
 }
 
-pub(crate) mod parsers {
+mod parsers {
     use super::*;
 
     pub(crate) fn definition(ctx: &ParsableContext) -> TokenStream {
@@ -43,7 +43,7 @@ pub(crate) mod parsers {
     }
 }
 
-pub(crate) mod generics {
+mod generics {
     use super::*;
 
     fn quote_generics(params: &[TokenStream]) -> TokenStream {
@@ -113,6 +113,49 @@ pub(crate) mod generics {
                 .map(|param| quote! {#param}),
         );
         quote_generics(&params)
+    }
+}
+
+pub(crate) fn implementation(
+    type_name: syn::Ident,
+    ctx: &ParsableContext,
+    parse_impl: TokenStream,
+    complete_impl: TokenStream,
+) -> TokenStream {
+    let parser_name = format_ident!("{}Parser", type_name);
+
+    let parsers_definition = parsers::definition(ctx);
+    let parsers_initialization = parsers::initialization(ctx);
+    let where_clause = ctx.generics.where_clause.as_ref();
+
+    let type_generics = generics::usage(ctx, false);
+    let ctx_generics = generics::context_usage(ctx);
+    let trait_generics = generics::definition(ctx, true);
+    let parser_struct_generics = generics::definition(ctx, !ctx.parsers.is_empty());
+    let parser_usage_generics = generics::usage(ctx, !ctx.parsers.is_empty());
+
+    quote! {
+        struct #parser_struct_generics #parser_name #where_clause { #parsers_definition }
+
+        impl #trait_generics ::cmd_parser::Parser #ctx_generics for #parser_name #where_clause {
+            type Value = #type_name #type_generics;
+
+            fn create(ctx: Ctx) -> Self {
+                #parser_name { #parsers_initialization }
+            }
+
+            fn parse<'a>(&self, input: &'a str) -> ::cmd_parser::ParseResult<'a, Self::Value> {
+                #parse_impl
+            }
+
+            fn complete<'a>(&self, input: &'a str) -> ::cmd_parser::CompletionResult<'a> {
+                #complete_impl
+            }
+        }
+
+        impl #trait_generics ::cmd_parser::Parsable #ctx_generics for #type_name #type_generics #where_clause {
+            type Parser = #parser_name #parser_usage_generics;
+        }
     }
 }
 
