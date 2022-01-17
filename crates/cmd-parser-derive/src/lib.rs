@@ -15,13 +15,18 @@ fn derive_struct(type_name: syn::Ident, data: syn::DataStruct) -> Result<TokenSt
     let parsers_definition = gen::parsers::definition(&context);
     let parsers_initialization = gen::parsers::initialization(&context);
     let where_clause = context.generics.where_clause.as_ref();
-    // let type_use_generics = gen::generics::type_use(&context.generics);
+
+    let type_generics = gen::generics::usage(&context, false);
+    let ctx_generics = gen::generics::context_usage(&context);
+    let trait_generics = gen::generics::definition(&context, true);
+    let parser_struct_generics = gen::generics::definition(&context, !context.parsers.is_empty());
+    let parser_usage_generics = gen::generics::usage(&context, !context.parsers.is_empty());
 
     Ok(quote! {
-        struct<Ctx> #parser_name #where_clause { #parsers_definition }
+        struct #parser_struct_generics #parser_name #where_clause { #parsers_definition }
 
-        impl<Ctx> ::cmd_parser::Parser<Ctx> for #parser_name #where_clause {
-            type Value = #type_name;
+        impl #trait_generics ::cmd_parser::Parser #ctx_generics for #parser_name #where_clause {
+            type Value = #type_name #type_generics;
 
             fn create(ctx: Ctx) -> Self {
                 #parser_name { #parsers_initialization }
@@ -36,8 +41,8 @@ fn derive_struct(type_name: syn::Ident, data: syn::DataStruct) -> Result<TokenSt
             }
         }
 
-        impl<Ctx> ::cmd_parser::Parsable<Ctx> for #type_name #where_clause {
-            type Parser = #parser_name<Ctx>;
+        impl #trait_generics ::cmd_parser::Parsable #ctx_generics for #type_name #type_generics #where_clause {
+            type Parser = #parser_name #parser_usage_generics;
         }
     })
 }

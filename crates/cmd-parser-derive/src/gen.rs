@@ -2,18 +2,18 @@ use crate::schema::{ContextType, ParsableContext, Parser};
 use proc_macro2::TokenStream;
 use quote::quote;
 
+fn ctx_generic(ctx: &ParsableContext) -> TokenStream {
+    match &ctx.context_type {
+        Some(ContextType::Generic(_)) | None => quote! {CmdParserCtx},
+        Some(ContextType::Concrete(ty)) => quote! {#ty},
+    }
+}
+
 pub(crate) mod parsers {
     use super::*;
 
-    fn generic(ctx: &ParsableContext) -> TokenStream {
-        match &ctx.context_type {
-            Some(ContextType::Generic(_)) | None => quote! {CmdParserCtx},
-            Some(ContextType::Concrete(ty)) => quote! {#ty},
-        }
-    }
-
     pub(crate) fn definition(ctx: &ParsableContext) -> TokenStream {
-        let generic = generic(ctx);
+        let generic = ctx_generic(ctx);
         let definitions = ctx.parsers.iter().map(|(parser, index)| {
             let ident = index.ident();
             match parser {
@@ -27,7 +27,7 @@ pub(crate) mod parsers {
     }
 
     pub(crate) fn initialization(ctx: &ParsableContext) -> TokenStream {
-        let generic = generic(ctx);
+        let generic = ctx_generic(ctx);
         let initializations = ctx.parsers.iter().map(|(parser, index)| {
             let ident = index.ident();
             match parser {
@@ -52,6 +52,11 @@ pub(crate) mod generics {
         } else {
             quote! {<#(#params),*>}
         }
+    }
+
+    pub(crate) fn context_usage(ctx: &ParsableContext) -> TokenStream {
+        let generic = ctx_generic(ctx);
+        quote! {<#generic>}
     }
 
     pub(crate) fn usage(ctx: &ParsableContext, include_ctx: bool) -> TokenStream {
