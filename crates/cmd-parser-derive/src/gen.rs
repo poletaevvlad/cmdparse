@@ -117,7 +117,7 @@ mod generics {
 }
 
 pub(crate) fn implementation(
-    type_name: syn::Ident,
+    type_name: &syn::Ident,
     ctx: &ParsableContext,
     parse_impl: TokenStream,
     complete_impl: TokenStream,
@@ -365,7 +365,7 @@ mod tests {
         fn no_parsers() {
             let ctx = ParsableContext::default();
             let result = implementation(
-                format_ident!("NoFields"),
+                &format_ident!("NoFields"),
                 &ctx,
                 quote! {parse!()},
                 quote! {complete!()},
@@ -407,7 +407,7 @@ mod tests {
             ));
             ctx.push_parser(Parser::FromParsable(&ty));
             let result = implementation(
-                format_ident!("WithConcreteCtx"),
+                &format_ident!("WithConcreteCtx"),
                 &ctx,
                 quote! {parse!()},
                 quote! {complete!()},
@@ -458,7 +458,7 @@ mod tests {
                 syn::parse2(quote! {super::ParserB<'a>}).unwrap(),
             ));
             let result = implementation(
-                format_ident!("WithGenerics"),
+                &format_ident!("WithGenerics"),
                 &ctx,
                 quote! {parse!()},
                 quote! {complete!()},

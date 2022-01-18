@@ -77,7 +77,7 @@ fn get_name_value_string(name_value: &syn::MetaNameValue) -> Result<String, Erro
 
 #[derive(Debug, Default)]
 pub(crate) struct TypeAttributes {
-    context_type: Option<ContextType>,
+    pub(crate) context_type: Option<ContextType>,
 }
 
 impl TypeAttributes {
