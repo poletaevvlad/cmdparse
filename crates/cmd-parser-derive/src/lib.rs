@@ -1,3 +1,4 @@
+mod attributes;
 mod gen;
 mod schema;
 

@@ -16,6 +16,7 @@ impl ParserIndex {
     }
 }
 
+#[derive(Debug)]
 pub(crate) enum ContextType {
     Generic(syn::punctuated::Punctuated<syn::TypeParamBound, syn::token::Add>),
     Concrete(syn::Type),
