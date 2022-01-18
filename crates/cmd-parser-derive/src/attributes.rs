@@ -120,3 +120,94 @@ impl BuildableAttributes for TypeAttributes {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{BuildableAttributes, TypeAttributes};
+    use proc_macro2::TokenStream;
+    use quote::quote;
+
+    mod type_atttributes {
+        use crate::schema::ContextType;
+
+        use super::*;
+        use proc_macro2::Span;
+
+        fn make_attribute(path_str: &str, tokens: TokenStream) -> syn::Attribute {
+            syn::Attribute {
+                pound_token: syn::token::Pound {
+                    spans: [Span::call_site()],
+                },
+                style: syn::AttrStyle::Outer,
+                bracket_token: syn::token::Bracket {
+                    span: Span::call_site(),
+                },
+                path: syn::parse_str(path_str).unwrap(),
+                tokens,
+            }
+        }
+
+        #[test]
+        fn parse_emty() {
+            let attributes = TypeAttributes::from_attributes(std::iter::empty()).unwrap();
+            assert!(attributes.context_type.is_none());
+        }
+
+        #[test]
+        fn parse_generic() {
+            let attrs = [
+                make_attribute("unknown", quote! {= "ignored"}),
+                make_attribute("cmd", quote! {(ctx_bounds = "Sync + Clone")}),
+            ];
+            let attributes = TypeAttributes::from_attributes(attrs.iter()).unwrap();
+            assert!(
+                matches!(attributes.context_type, Some(ContextType::Generic(bounds)) if quote!{#bounds}.to_string() == "Sync + Clone")
+            );
+        }
+
+        #[test]
+        fn parse_concrete() {
+            let attrs = [make_attribute("cmd", quote! {(ctx = "u16")})];
+            let attributes = TypeAttributes::from_attributes(attrs.iter()).unwrap();
+            assert!(
+                matches!(attributes.context_type, Some(ContextType::Concrete(ty)) if quote!{#ty}.to_string() == "u16")
+            );
+        }
+
+        #[test]
+        fn error_duplicate_cmd() {
+            let attrs = [make_attribute("cmd", quote! {(ctx = "u16", ctx="u32")})];
+            let attributes = TypeAttributes::from_attributes(attrs.iter()).unwrap_err();
+            assert_eq!(
+                &attributes.to_string(),
+                "ctx attribute cannot be used more than once"
+            );
+        }
+
+        #[test]
+        fn error_duplicate_cmd_bounds() {
+            let attrs = [make_attribute(
+                "cmd",
+                quote! {(ctx_bounds = "Clone", ctx_bounds="Send")},
+            )];
+            let attributes = TypeAttributes::from_attributes(attrs.iter()).unwrap_err();
+            assert_eq!(
+                &attributes.to_string(),
+                "ctx_bounds attribute cannot be used more than once"
+            );
+        }
+
+        #[test]
+        fn error_both_cmd_and_bounds() {
+            let attrs = [make_attribute(
+                "cmd",
+                quote! {(ctx = "u16", ctx_bounds="Clone")},
+            )];
+            let attributes = TypeAttributes::from_attributes(attrs.iter()).unwrap_err();
+            assert_eq!(
+                &attributes.to_string(),
+                "ctx and ctx_bounds cannot be used at the same time"
+            );
+        }
+    }
+}
