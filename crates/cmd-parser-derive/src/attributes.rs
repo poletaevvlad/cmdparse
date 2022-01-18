@@ -107,12 +107,14 @@ impl BuildableAttributes for TypeAttributes {
     fn visit_name_value(&mut self, name_value: &syn::MetaNameValue) -> Result<(), Error> {
         if compare_path(&name_value.path, "ctx") {
             let string = get_name_value_string(name_value)?;
-            let type_ = syn::parse_str::<syn::Type>(&string)?;
+            let type_ = syn::parse_str::<syn::Type>(&string)
+                .map_err(|error| Error::new(name_value.lit.span(), error))?;
             self.set_context_type(ContextType::Concrete(type_), name_value.span())?;
             Ok(())
         } else if compare_path(&name_value.path, "ctx_bounds") {
             let string = get_name_value_string(name_value)?;
-            let type_param = syn::parse_str::<syn::TypeParam>(&format!("T: {}", string))?;
+            let type_param = syn::parse_str::<syn::TypeParam>(&format!("T: {}", string))
+                .map_err(|error| Error::new(name_value.lit.span(), error))?;
             self.set_context_type(ContextType::Generic(type_param.bounds), name_value.span())?;
             Ok(())
         } else {
