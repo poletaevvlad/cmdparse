@@ -42,6 +42,8 @@ impl<'a> ParsableContext<'a> {
 pub(crate) struct ParsableStruct<'a> {
     fields: Vec<ParserIndex>,
     names: Option<Vec<(&'a syn::Ident, usize)>>,
+    required: Vec<usize>,
+    optional: Vec<(&'a str, usize, Option<syn::Expr>)>,
 }
 
 impl<'a> ParsableStruct<'a> {
@@ -52,6 +54,8 @@ impl<'a> ParsableStruct<'a> {
         let mut result = ParsableStruct {
             fields: Vec::new(),
             names: None,
+            required: Vec::new(),
+            optional: Vec::new(),
         };
         let fields = match fields {
             syn::Fields::Named(fields) => {
