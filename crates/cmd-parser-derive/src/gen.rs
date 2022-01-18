@@ -318,11 +318,11 @@ mod tests {
         #[test]
         fn usage_generic_context() {
             let mut ctx = make_context_with_generic();
-            ctx.context_type = Some(ContextType::Generic(
+            ctx.context_type = Some(ContextType::Generic(Box::new(
                 syn::parse2::<syn::TypeParam>(quote! {T: Send + Sync})
                     .unwrap()
                     .bounds,
-            ));
+            )));
 
             assert_tokens_eq(usage(&ctx, false), quote! {<'a, 'b, T, X>});
             assert_tokens_eq(usage(&ctx, true), quote! {<'a, 'b, CmdParserCtx, T, X>});
@@ -340,11 +340,11 @@ mod tests {
         #[test]
         fn usage_generic_context_no_generics() {
             let ctx = ParsableContext {
-                context_type: Some(ContextType::Generic(
+                context_type: Some(ContextType::Generic(Box::new(
                     syn::parse2::<syn::TypeParam>(quote! {T: Send + Sync})
                         .unwrap()
                         .bounds,
-                )),
+                ))),
                 ..Default::default()
             };
 
@@ -443,11 +443,11 @@ mod tests {
         #[test]
         fn with_generics() {
             let mut ctx = ParsableContext {
-                context_type: Some(ContextType::Generic(
+                context_type: Some(ContextType::Generic(Box::new(
                     syn::parse2::<syn::TypeParam>(quote! {T: Send + Sync})
                         .unwrap()
                         .bounds,
-                )),
+                ))),
                 generics: syn::parse2(quote! {<'a, T: Parsable<CmdParserCtx>>}).unwrap(),
                 ..Default::default()
             };

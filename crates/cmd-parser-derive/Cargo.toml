@@ -11,3 +11,7 @@ proc-macro2 = "1.0"
 quote = "1.0"
 syn = { version = "1.0", features = ["derive", "parsing", "extra-traits"] }
 linked-hash-map = "0.5.4"
+
+[dev-dependencies]
+syn = { version = "1.0", features = ["derive", "parsing", "extra-traits", "full"] }
+
