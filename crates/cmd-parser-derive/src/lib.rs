@@ -1,5 +1,6 @@
 mod attributes;
 mod fields;
+mod fields_gen;
 mod gen;
 
 use attributes::{BuildableAttributes, TypeAttributes};
