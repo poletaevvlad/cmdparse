@@ -134,7 +134,7 @@ impl BuildableAttributes for TypeAttributes {
 #[derive(Debug, Default)]
 pub(crate) struct FieldAttributes {
     pub(crate) parser: Option<syn::Type>,
-    pub(crate) default: Option<syn::Expr>,
+    pub(crate) default: Option<Option<syn::Expr>>,
     pub(crate) names: HashMap<String, Option<syn::Expr>>,
 }
 
@@ -162,7 +162,7 @@ impl BuildableAttributes for FieldAttributes {
                     "multiple default values aren't allowed",
                 ));
             }
-            self.default = Some(default);
+            self.default = Some(Some(default));
             Ok(())
         } else {
             Err(unknown_attr_error(&name_value.path))
@@ -178,6 +178,21 @@ impl BuildableAttributes for FieldAttributes {
             Ok(())
         } else {
             Err(unknown_attr_error(&list.path))
+        }
+    }
+
+    fn visit_path(&mut self, path: &syn::Path) -> Result<(), Error> {
+        if compare_path(path, "default") {
+            if self.default.is_some() {
+                return Err(Error::new(
+                    path.span(),
+                    "multiple default values aren't allowed",
+                ));
+            }
+            self.default = Some(None);
+            Ok(())
+        } else {
+            Err(unknown_attr_error(path))
         }
     }
 }
@@ -341,7 +356,16 @@ mod tests {
         fn with_default() {
             let attrs = [make_attribute("cmd", quote! {(default = "42")})];
             let attributes = FieldAttributes::from_attributes(attrs.iter()).unwrap();
-            assert!(matches!(attributes.default, Some(expr) if quote!{#expr}.to_string() == "42"));
+            assert!(
+                matches!(attributes.default, Some(Some(expr)) if quote!{#expr}.to_string() == "42")
+            );
+        }
+
+        #[test]
+        fn with_default_optional() {
+            let attrs = [make_attribute("cmd", quote! {(default)})];
+            let attributes = FieldAttributes::from_attributes(attrs.iter()).unwrap();
+            assert!(matches!(attributes.default, Some(None)));
         }
 
         #[test]
