@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::schema::ContextType;
+use crate::fields::ContextType;
 use proc_macro2::Span;
 use syn::spanned::Spanned;
 use syn::Error;
@@ -228,7 +228,7 @@ fn get_path_string(path: &syn::Path) -> Result<String, Error> {
 #[cfg(test)]
 mod tests {
     use super::BuildableAttributes;
-    use crate::schema::ContextType;
+    use crate::fields::ContextType;
     use proc_macro2::{Span, TokenStream};
     use quote::quote;
 

@@ -1,4 +1,4 @@
-use crate::schema::{ContextType, ParsableContext, Parser};
+use crate::fields::{ContextType, ParsableContext, Parser};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
@@ -162,7 +162,7 @@ pub(crate) fn implementation(
 
 #[cfg(test)]
 mod tests {
-    use crate::schema::{ContextType, ParsableContext, Parser};
+    use crate::fields::{ContextType, ParsableContext, Parser};
     use proc_macro2::TokenStream;
     use quote::quote;
 

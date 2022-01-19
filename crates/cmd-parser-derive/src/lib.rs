@@ -1,12 +1,12 @@
 mod attributes;
+mod fields;
 mod gen;
-mod schema;
 
 use attributes::{BuildableAttributes, TypeAttributes};
+use fields::{ParsableContext, ParsableStruct};
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
-use schema::{ParsableContext, ParsableStruct};
 use syn::spanned::Spanned;
 
 type DeriveResult = Result<(TokenStream2, TokenStream2), syn::Error>;

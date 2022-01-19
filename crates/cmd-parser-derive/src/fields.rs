@@ -103,10 +103,9 @@ mod tests {
     use quote::quote;
 
     mod parsable_struct {
-        use quote::format_ident;
-
         use super::*;
-        use crate::schema::{ParsableContext, ParsableStruct};
+        use crate::fields::{ParsableContext, ParsableStruct};
+        use quote::format_ident;
 
         #[test]
         fn unit_struct() {
