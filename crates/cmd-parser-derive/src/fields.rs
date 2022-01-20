@@ -40,6 +40,39 @@ impl<'a> ParsableContext<'a> {
     }
 }
 
+pub(crate) enum FieldView<'a> {
+    Required {
+        field_index: usize,
+        parser: ParserIndex,
+    },
+    Optional {
+        field_index: usize,
+        parser: ParserIndex,
+        default: Option<&'a syn::Expr>,
+        name: &'a str,
+    },
+    Fixed {
+        field_index: usize,
+        value: &'a syn::Expr,
+        name: &'a str,
+    },
+    Default {
+        field_index: usize,
+        default: Option<&'a syn::Expr>,
+    },
+}
+
+impl<'a> FieldView<'a> {
+    pub(crate) fn field_index(&self) -> usize {
+        match self {
+            FieldView::Required { field_index, .. } => *field_index,
+            FieldView::Optional { field_index, .. } => *field_index,
+            FieldView::Fixed { field_index, .. } => *field_index,
+            FieldView::Default { field_index, .. } => *field_index,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) enum FieldValue {
     Required {
@@ -133,6 +166,37 @@ impl<'a> FieldsSet<'a> {
         }
 
         Ok(result)
+    }
+
+    pub(crate) fn fields_views(&self) -> impl Iterator<Item = FieldView<'_>> {
+        self.fields.iter().map(|field| {
+            let field_index = field.field_index;
+            match &field.value {
+                FieldValue::Required { parser } => FieldView::Required {
+                    field_index,
+                    parser: *parser,
+                },
+                FieldValue::Optional {
+                    parser,
+                    default,
+                    name,
+                } => FieldView::Optional {
+                    field_index,
+                    parser: *parser,
+                    default: default.map(|index| &self.defaults[index]),
+                    name,
+                },
+                FieldValue::Fixed { value, name } => FieldView::Fixed {
+                    field_index,
+                    value: value.as_ref(),
+                    name,
+                },
+                FieldValue::Default(default) => FieldView::Default {
+                    field_index,
+                    default: default.map(|index| &self.defaults[index]),
+                },
+            }
+        })
     }
 }
 
