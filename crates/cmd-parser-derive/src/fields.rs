@@ -1,7 +1,6 @@
 use crate::attributes::{BuildableAttributes, FieldAttributes};
 use linked_hash_map::LinkedHashMap;
 use quote::format_ident;
-use std::collections::HashMap;
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub(crate) enum Parser<'a> {
@@ -41,55 +40,95 @@ impl<'a> ParsableContext<'a> {
     }
 }
 
-#[derive(Default)]
-pub(crate) struct ParsableStruct<'a> {
-    fields: Vec<ParserIndex>,
-    names: Option<Vec<(&'a syn::Ident, usize)>>,
-    required: Vec<usize>,
-    optional: Vec<(String, usize, Option<syn::Expr>)>,
-    defaults: HashMap<usize, syn::Expr>,
+#[derive(Debug)]
+pub(crate) enum FieldValue {
+    Required {
+        parser: ParserIndex,
+    },
+    Optional {
+        parser: ParserIndex,
+        default: Option<usize>,
+        name: String,
+    },
+    Fixed {
+        value: Box<syn::Expr>,
+        name: String,
+    },
+    Default(Option<usize>),
 }
 
-impl<'a> ParsableStruct<'a> {
+pub(crate) struct Field {
+    value: FieldValue,
+    field_index: usize,
+}
+
+#[derive(Default)]
+pub(crate) struct FieldsSet<'a> {
+    idents: Vec<&'a syn::Ident>,
+    defaults: Vec<syn::Expr>,
+    fields: Vec<Field>,
+}
+
+impl<'a> FieldsSet<'a> {
     pub(crate) fn from_fields(
         context: &mut ParsableContext<'a>,
         fields: &'a syn::Fields,
     ) -> Result<Self, syn::Error> {
-        let mut result = ParsableStruct::default();
+        let mut result = FieldsSet::default();
 
         let fields = match fields {
-            syn::Fields::Named(fields) => {
-                result.names = Some(Vec::new());
-                &fields.named
-            }
+            syn::Fields::Named(fields) => &fields.named,
             syn::Fields::Unnamed(fields) => &fields.unnamed,
             syn::Fields::Unit => return Ok(result),
         };
 
         for (field_index, field) in fields.iter().enumerate() {
-            let attributes = FieldAttributes::from_attributes(field.attrs.iter())?;
+            if let Some(ident) = &field.ident {
+                result.idents.push(ident);
+            }
 
+            let attributes = FieldAttributes::from_attributes(field.attrs.iter())?;
             let parser = match attributes.parser {
                 None => Parser::FromParsable(&field.ty),
                 Some(parser) => Parser::Explicit(parser),
             };
-            let parser_index = context.push_parser(parser);
-            result.fields.push(parser_index);
+
+            let default = attributes.default.map(|default| {
+                default.map(|default| {
+                    result.defaults.push(default);
+                    result.defaults.len() - 1
+                })
+            });
 
             if attributes.names.is_empty() {
-                result.required.push(field_index);
+                let value = match default {
+                    Some(default) => FieldValue::Default(default),
+                    None => FieldValue::Required {
+                        parser: context.push_parser(parser),
+                    },
+                };
+                result.fields.push(Field { value, field_index });
             } else {
+                let has_parser = attributes.names.values().any(Option::is_none);
+                let parser_id = if has_parser {
+                    Some(context.push_parser(parser))
+                } else {
+                    None
+                };
                 for (name, value) in attributes.names {
-                    result.optional.push((name, field_index, value));
+                    let value = match value {
+                        Some(value) => FieldValue::Fixed {
+                            value: Box::new(value),
+                            name,
+                        },
+                        None => FieldValue::Optional {
+                            name,
+                            parser: parser_id.unwrap(),
+                            default: default.flatten(),
+                        },
+                    };
+                    result.fields.push(Field { value, field_index });
                 }
-            }
-            if let Some(default) = attributes.default {
-                result.defaults.insert(field_index, default);
-            }
-
-            if let Some(ref mut names) = result.names {
-                // unwrap: `names` is Some if the fields are named
-                names.push((field.ident.as_ref().unwrap(), result.fields.len() - 1));
             }
         }
 
@@ -99,13 +138,11 @@ impl<'a> ParsableStruct<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Parser, ParserIndex};
+    use super::{Field, FieldValue, FieldsSet, ParsableContext};
     use quote::quote;
 
     mod parsable_struct {
         use super::*;
-        use crate::fields::{ParsableContext, ParsableStruct};
-        use quote::format_ident;
 
         #[test]
         fn unit_struct() {
@@ -113,86 +150,121 @@ mod tests {
             let fields = syn::parse2::<syn::ItemStruct>(struct_).unwrap().fields;
             let mut context = ParsableContext::default();
 
-            let parsable = ParsableStruct::from_fields(&mut context, &fields).unwrap();
+            let parsable = FieldsSet::from_fields(&mut context, &fields).unwrap();
             assert!(context.parsers.is_empty());
             assert!(parsable.fields.is_empty());
         }
-
-        fn assert_parsable_struct(mut parsable: ParsableStruct<'_>, context: &ParsableContext) {
-            let parsers: Vec<_> = context.parsers.iter().map(|(parser, _)| parser).collect();
-            assert_eq!(parsers.len(), 3);
-            assert!(
-                matches!(parsers[0], Parser::FromParsable(ty) if &quote!{#ty}.to_string() == "u8")
-            );
-            assert!(
-                matches!(parsers[1], Parser::Explicit(ty) if &quote!{#ty}.to_string() == "CustomParser")
-            );
-            assert!(
-                matches!(parsers[2], Parser::FromParsable(ty) if &quote!{#ty}.to_string() == "String")
-            );
-
-            assert_eq!(
-                parsable.fields,
-                vec![ParserIndex(0), ParserIndex(1), ParserIndex(2)]
-            );
-
-            assert_eq!(parsable.required, vec![0]);
-
-            parsable.optional.sort_by(|a, b| a.0.cmp(&b.0));
-            assert_eq!(parsable.optional.len(), 3);
-            assert!(matches!(&parsable.optional[0], (name, 2, None) if name.as_str() == "name"));
-            assert!(
-                matches!(&parsable.optional[1], (name, 1, Some(val)) if &quote!{#val}.to_string() == "false" && name.as_str() == "no")
-            );
-            assert!(
-                matches!(&parsable.optional[2], (name, 1, Some(val)) if &quote!{#val}.to_string() == "true" && name.as_str() == "yes")
-            );
-
-            assert_eq!(parsable.defaults.len(), 1);
-            assert!(
-                matches!(&parsable.defaults.get(&2), Some(expr) if &quote!{#expr}.to_string() == "\"unknown\" . to_string ()")
-            );
-        }
-
         #[test]
         fn tuple_struct() {
             let struct_ = quote! { struct Mock(
                 u8,
                 #[cmd(parser = "CustomParser", attr(yes="true", no="false"))] bool,
-                #[cmd(attr(name), default="\"unknown\".to_string()")] String
+                #[cmd(attr(a="10", b))] u16,
+                #[cmd(attr(name), default="\"unknown\".to_string()")] String,
+                #[cmd(default)] u32,
+                #[cmd(default = "4")] u64,
             ); };
             let fields = syn::parse2::<syn::ItemStruct>(struct_).unwrap().fields;
             let mut context = ParsableContext::default();
 
-            let parsable = ParsableStruct::from_fields(&mut context, &fields).unwrap();
-            assert!(parsable.names.is_none());
-            assert_parsable_struct(parsable, &context);
+            let fieldset = FieldsSet::from_fields(&mut context, &fields).unwrap();
+            assert!(fieldset.idents.is_empty());
+            assert_eq!(fieldset.fields.len(), 8);
+            assert_fieldset(fieldset);
         }
 
         #[test]
         fn tuple_named() {
             let struct_ = quote! { struct Mock{
-                number: u8,
-                #[cmd(parser = "CustomParser", attr(yes="true", no="false"))] boolean: bool,
-                #[cmd(attr(name), default="\"unknown\".to_string()")] name: String
+                required: u8,
+                #[cmd(parser = "CustomParser", attr(yes="true", no="false"))] opt_no_entry: bool,
+                #[cmd(attr(a="10", b))] opt_maybe_entry: u16,
+                #[cmd(attr(name), default="\"unknown\".to_string()")] opt_only_entry: String,
+                #[cmd(default)] default_only: u32,
+                #[cmd(default = "4")] custom_default_only: u64,
             } };
             let fields = syn::parse2::<syn::ItemStruct>(struct_).unwrap().fields;
             let mut context = ParsableContext::default();
 
-            let parsable = ParsableStruct::from_fields(&mut context, &fields).unwrap();
+            let fieldset = FieldsSet::from_fields(&mut context, &fields).unwrap();
 
-            let ident_number = format_ident!("number");
-            let ident_boolean = format_ident!("boolean");
-            let ident_name = format_ident!("name");
+            let idents: Vec<_> = fieldset
+                .idents
+                .iter()
+                .map(|ident| ident.to_string())
+                .collect();
             assert_eq!(
-                parsable.names,
-                Some(vec![
-                    (&ident_number, 0),
-                    (&ident_boolean, 1),
-                    (&ident_name, 2)
-                ])
+                idents,
+                vec![
+                    "required",
+                    "opt_no_entry",
+                    "opt_maybe_entry",
+                    "opt_only_entry",
+                    "default_only",
+                    "custom_default_only"
+                ]
             );
-            assert_parsable_struct(parsable, &context);
+
+            assert_fieldset(fieldset);
+        }
+
+        fn assert_fieldset(fieldset: FieldsSet) {
+            let defaults: Vec<_> = fieldset
+                .defaults
+                .iter()
+                .map(|default| quote! {#default}.to_string())
+                .collect();
+            assert_eq!(defaults, vec!["\"unknown\" . to_string ()", "4"]);
+
+            let fields: HashSet<_> = fieldset.fields.iter().map(fmt_field).collect();
+            let expected_fields: HashSet<_> = [
+                "0, Required(0)",
+                "1, Fixed(true, yes)",
+                "1, Fixed(false, no)",
+                "2, Fixed(10, a)",
+                "2, Optional(1, None, b)",
+                "3, Optional(2, Some(0), name)",
+                "4, Default(None)",
+                "5, Default(Some(1))",
+            ]
+            .iter()
+            .copied()
+            .map(str::to_string)
+            .collect();
+            assert_eq!(fields, expected_fields);
+        }
+
+        use std::{collections::HashSet, fmt::Write};
+
+        fn fmt_field(field: &Field) -> String {
+            let mut string = String::new();
+            write!(&mut string, "{}, ", field.field_index).unwrap();
+            match &field.value {
+                FieldValue::Required { parser } => {
+                    write!(&mut string, "Required({})", parser.0).unwrap();
+                }
+                FieldValue::Optional {
+                    parser,
+                    default,
+                    name,
+                } => write!(
+                    &mut string,
+                    "Optional({}, {:?}, {})",
+                    parser.0, default, name
+                )
+                .unwrap(),
+                FieldValue::Fixed { value, name } => write!(
+                    &mut string,
+                    "Fixed({}, {})",
+                    quote! {#value}.to_string(),
+                    name
+                )
+                .unwrap(),
+                FieldValue::Default(default) => {
+                    write!(&mut string, "Default({:?})", default).unwrap();
+                }
+            }
+            string
         }
     }
 }
