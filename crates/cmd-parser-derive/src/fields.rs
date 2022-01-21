@@ -44,6 +44,7 @@ pub(crate) enum FieldView<'a> {
     Required {
         field_index: usize,
         parser: ParserIndex,
+        position: usize,
     },
     Optional {
         field_index: usize,
@@ -55,6 +56,7 @@ pub(crate) enum FieldView<'a> {
         field_index: usize,
         value: &'a syn::Expr,
         name: &'a str,
+        default: Option<&'a syn::Expr>,
     },
     Default {
         field_index: usize,
@@ -86,6 +88,7 @@ pub(crate) enum FieldValue {
     Fixed {
         value: Box<syn::Expr>,
         name: String,
+        default: Option<usize>,
     },
     Default(Option<usize>),
 }
@@ -93,6 +96,13 @@ pub(crate) enum FieldValue {
 pub(crate) struct Field {
     value: FieldValue,
     field_index: usize,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum StructType {
+    Unit,
+    Named,
+    Unnamed,
 }
 
 #[derive(Default)]
@@ -153,6 +163,7 @@ impl<'a> FieldsSet<'a> {
                         Some(value) => FieldValue::Fixed {
                             value: Box::new(value),
                             name,
+                            default: default.flatten(),
                         },
                         None => FieldValue::Optional {
                             name,
@@ -168,14 +179,33 @@ impl<'a> FieldsSet<'a> {
         Ok(result)
     }
 
+    pub(crate) fn struct_type(&self) -> StructType {
+        if self.fields.is_empty() {
+            StructType::Unit
+        } else if self.idents.is_empty() {
+            StructType::Unnamed
+        } else {
+            StructType::Named
+        }
+    }
+
+    pub(crate) fn get_ident(&self, index: usize) -> Option<&syn::Ident> {
+        self.idents.get(index).copied()
+    }
+
     pub(crate) fn fields_views(&self) -> impl Iterator<Item = FieldView<'_>> {
-        self.fields.iter().map(|field| {
+        let mut required_position = 0;
+        self.fields.iter().map(move |field| {
             let field_index = field.field_index;
             match &field.value {
-                FieldValue::Required { parser } => FieldView::Required {
-                    field_index,
-                    parser: *parser,
-                },
+                FieldValue::Required { parser } => {
+                    required_position += 1;
+                    FieldView::Required {
+                        field_index,
+                        parser: *parser,
+                        position: required_position - 1,
+                    }
+                }
                 FieldValue::Optional {
                     parser,
                     default,
@@ -186,10 +216,15 @@ impl<'a> FieldsSet<'a> {
                     default: default.map(|index| &self.defaults[index]),
                     name,
                 },
-                FieldValue::Fixed { value, name } => FieldView::Fixed {
+                FieldValue::Fixed {
+                    value,
+                    name,
+                    default,
+                } => FieldView::Fixed {
                     field_index,
                     value: value.as_ref(),
                     name,
+                    default: default.map(|index| &self.defaults[index]),
                 },
                 FieldValue::Default(default) => FieldView::Default {
                     field_index,
@@ -202,7 +237,7 @@ impl<'a> FieldsSet<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Field, FieldValue, FieldsSet, ParsableContext};
+    use super::{Field, FieldValue, FieldsSet, ParsableContext, StructType};
     use quote::quote;
 
     mod parsable_struct {
@@ -214,16 +249,17 @@ mod tests {
             let fields = syn::parse2::<syn::ItemStruct>(struct_).unwrap().fields;
             let mut context = ParsableContext::default();
 
-            let parsable = FieldsSet::from_fields(&mut context, &fields).unwrap();
+            let fieldset = FieldsSet::from_fields(&mut context, &fields).unwrap();
             assert!(context.parsers.is_empty());
-            assert!(parsable.fields.is_empty());
+            assert!(fieldset.fields.is_empty());
+            assert_eq!(fieldset.struct_type(), StructType::Unit);
         }
         #[test]
         fn tuple_struct() {
             let struct_ = quote! { struct Mock(
                 u8,
                 #[cmd(parser = "CustomParser", attr(yes="true", no="false"))] bool,
-                #[cmd(attr(a="10", b))] u16,
+                #[cmd(attr(a="10", b), default="6")] u16,
                 #[cmd(attr(name), default="\"unknown\".to_string()")] String,
                 #[cmd(default)] u32,
                 #[cmd(default = "4")] u64,
@@ -234,6 +270,7 @@ mod tests {
             let fieldset = FieldsSet::from_fields(&mut context, &fields).unwrap();
             assert!(fieldset.idents.is_empty());
             assert_eq!(fieldset.fields.len(), 8);
+            assert_eq!(fieldset.struct_type(), StructType::Unnamed);
             assert_fieldset(fieldset);
         }
 
@@ -242,7 +279,7 @@ mod tests {
             let struct_ = quote! { struct Mock{
                 required: u8,
                 #[cmd(parser = "CustomParser", attr(yes="true", no="false"))] opt_no_entry: bool,
-                #[cmd(attr(a="10", b))] opt_maybe_entry: u16,
+                #[cmd(attr(a="10", b), default="6")] opt_maybe_entry: u16,
                 #[cmd(attr(name), default="\"unknown\".to_string()")] opt_only_entry: String,
                 #[cmd(default)] default_only: u32,
                 #[cmd(default = "4")] custom_default_only: u64,
@@ -269,6 +306,7 @@ mod tests {
                 ]
             );
 
+            assert_eq!(fieldset.struct_type(), StructType::Named);
             assert_fieldset(fieldset);
         }
 
@@ -278,18 +316,18 @@ mod tests {
                 .iter()
                 .map(|default| quote! {#default}.to_string())
                 .collect();
-            assert_eq!(defaults, vec!["\"unknown\" . to_string ()", "4"]);
+            assert_eq!(defaults, vec!["6", "\"unknown\" . to_string ()", "4"]);
 
             let fields: HashSet<_> = fieldset.fields.iter().map(fmt_field).collect();
             let expected_fields: HashSet<_> = [
                 "0, Required(0)",
-                "1, Fixed(true, yes)",
-                "1, Fixed(false, no)",
-                "2, Fixed(10, a)",
-                "2, Optional(1, None, b)",
-                "3, Optional(2, Some(0), name)",
+                "1, Fixed(true, None, yes)",
+                "1, Fixed(false, None, no)",
+                "2, Fixed(10, Some(0), a)",
+                "2, Optional(1, Some(0), b)",
+                "3, Optional(2, Some(1), name)",
                 "4, Default(None)",
-                "5, Default(Some(1))",
+                "5, Default(Some(2))",
             ]
             .iter()
             .copied()
@@ -317,11 +355,16 @@ mod tests {
                     parser.0, default, name
                 )
                 .unwrap(),
-                FieldValue::Fixed { value, name } => write!(
+                FieldValue::Fixed {
+                    value,
+                    name,
+                    default,
+                } => write!(
                     &mut string,
-                    "Fixed({}, {})",
+                    "Fixed({}, {:?}, {})",
                     quote! {#value}.to_string(),
-                    name
+                    default,
+                    name,
                 )
                 .unwrap(),
                 FieldValue::Default(default) => {

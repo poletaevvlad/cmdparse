@@ -4,7 +4,8 @@ mod fields_gen;
 mod gen;
 
 use attributes::{BuildableAttributes, TypeAttributes};
-use fields::ParsableContext;
+use fields::{FieldsSet, ParsableContext};
+use fields_gen::gen_parse_struct;
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
@@ -12,9 +13,10 @@ use syn::spanned::Spanned;
 
 type DeriveResult = Result<(TokenStream2, TokenStream2), syn::Error>;
 
-fn derive_struct<'a>(_ctx: &mut ParsableContext<'a>, _data: &'a syn::DataStruct) -> DeriveResult {
-    //let _parsable_struct = FieldsSet::from_fields(ctx, &data.fields)?;
-    Ok((quote! {todo!()}, quote! {todo!()}))
+fn derive_struct<'a>(ctx: &mut ParsableContext<'a>, data: &'a syn::DataStruct) -> DeriveResult {
+    let fieldset = FieldsSet::from_fields(ctx, &data.fields)?;
+    let parse_tokens = gen_parse_struct(quote! { Self::Value }, fieldset);
+    Ok((parse_tokens, quote! {todo!()}))
 }
 
 fn derive_enum<'a>(_ctx: &mut ParsableContext<'a>, _data: &'a syn::DataEnum) -> DeriveResult {
