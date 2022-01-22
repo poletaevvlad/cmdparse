@@ -1,8 +1,9 @@
 mod error;
-mod primitives;
-mod sequences;
-mod tokens;
+pub mod primitives;
+pub mod sequences;
+pub mod tokens;
 
+pub use cmd_parser_derive::Parsable;
 pub use error::ParseError;
 use std::borrow::Cow;
 

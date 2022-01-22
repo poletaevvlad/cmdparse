@@ -126,7 +126,7 @@ pub(crate) fn gen_parse_struct(constructor: TokenStream, fields: FieldsSet<'_>) 
         unwrap_fields.extend(unwrap_field);
     }
 
-    let initialization = match fields.struct_type() {
+    let result_struct = match fields.struct_type() {
         StructType::Named => quote! { #constructor{ #unwrap_fields } },
         StructType::Unnamed => quote! { #constructor( #unwrap_fields ) },
         StructType::Unit => quote! {#constructor},
@@ -137,26 +137,28 @@ pub(crate) fn gen_parse_struct(constructor: TokenStream, fields: FieldsSet<'_>) 
         let mut required_index = 0;
         let first_token = true;
         loop {
-            match index {
+            match required_index {
                 #required_parsing
-                _ => break;
+                _ => break,
             }
-            let (token, remaining) = take_token(input);
+            let (token, remaining) = ::cmd_parser::tokens::take_token(input);
             match token {
-                Token::Attribute(attr) => match &attr {
+                ::cmd_parser::tokens::Token::Attribute(attr) => match attr {
                     #optional_parsing
                     attr => {
-                        let error = ParseError::unknown_attribute(attr);
+                        let error = ::cmd_parser::ParseError::unknown_attribute(attr);
                         return match first_token {
-                            true => ParseResult::Unrecognized(attr)
-                            false => ParseResult::Failed(attr)
+                            true => ::cmd_parser::ParseResult::Unrecognized(error),
+                            false => ::cmd_parser::ParseResult::Failed(error),
                         };
                     }
                 }
-                Token::Text(_) => panic!("Parser failure: parse function returned unknown attribure error but the input does not begin with an attribute")
+                ::cmd_parser::tokens::Token::Text(_) => {
+                    panic!("Parser failure: parse function returned unknown attribure error but the input does not begin with an attribute");
+                }
             }
             first_token = false;
         }
-        ParserResult::Parsed(#initialization, input)
+        ::cmd_parser::ParseResult::Parsed(#result_struct, input)
     }
 }

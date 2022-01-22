@@ -1,5 +1,6 @@
 [workspace]
 members = [
     "crates/cmd-parser",
-    "crates/cmd-parser-derive"
+    "crates/cmd-parser-derive",
+    "crates/derive-tests",
 ]
