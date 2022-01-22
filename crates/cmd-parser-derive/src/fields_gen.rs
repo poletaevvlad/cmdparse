@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::fields::{FieldView, FieldsSet, StructType};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -56,8 +58,8 @@ impl<'a> FieldView<'a> {
                                 #var_ident = Some(result);
                             }
                             ::cmd_parser::ParseResult::UnrecognizedAttribute(attr, _) =>
-                                ::cmd_parser::ParseResult::Failed(::cmd_parser::ParseError::unknown_attribute(attr)),
-                            ::cmd_parser::ParseReult::Failed(error) => {
+                                return ::cmd_parser::ParseResult::Failed(::cmd_parser::ParseError::unknown_attribute(attr)),
+                            ::cmd_parser::ParseResult::Failed(error) => {
                                 return ParseResult::Failed(error)
                             }
                         }
@@ -69,6 +71,7 @@ impl<'a> FieldView<'a> {
                 quote! {
                     #name => {
                         #var_ident = Some(#value);
+                        input = remaining;
                     }
                 }
             }
@@ -117,18 +120,24 @@ pub(crate) fn gen_parse_struct(
     let mut unwrap_fields = TokenStream::new();
 
     let mut required_count: usize = 0;
+    let mut initialized_field_indices = HashSet::new();
 
     for field in fields.fields_views() {
-        initialization.extend(field.gen_var_instantiate());
         required_parsing.extend(field.gen_parse_required(&ctx));
         optional_parsing.extend(field.gen_parse_optional(&ctx));
 
-        let unwrap_value = field.gen_unwrap();
-        let unwrap_field = match fields.get_ident(field.field_index()) {
-            Some(ident) => quote! { #ident: #unwrap_value, },
-            None => quote! { #unwrap_value, },
-        };
-        unwrap_fields.extend(unwrap_field);
+        let index = field.field_index();
+        if !initialized_field_indices.contains(&index) {
+            initialization.extend(field.gen_var_instantiate());
+
+            let unwrap_value = field.gen_unwrap();
+            let unwrap_field = match fields.get_ident(field.field_index()) {
+                Some(ident) => quote! { #ident: #unwrap_value, },
+                None => quote! { #unwrap_value, },
+            };
+            unwrap_fields.extend(unwrap_field);
+            initialized_field_indices.insert(index);
+        }
 
         if matches!(field, FieldView::Required { .. }) {
             required_count += 1;
@@ -156,11 +165,11 @@ pub(crate) fn gen_parse_struct(
                     }
                 }
             };
-            match attr {
+            match std::borrow::Borrow::<str>::borrow(&attr) {
                 #optional_parsing
-                attr if first_token => return ::cmd_parser::ParseResult::UnrecognizedAttribute(attr, remaining),
-                attr if required_index >= #required_count => break,
-                attr => return ::cmd_parser::ParseResult::Failed(::cmd_parser::ParseError::unknown_attribute(attr)),
+                _ if required_index >= #required_count => break,
+                _ if first_token => return ::cmd_parser::ParseResult::UnrecognizedAttribute(attr, remaining),
+                _ => return ::cmd_parser::ParseResult::Failed(::cmd_parser::ParseError::unknown_attribute(attr)),
             }
             first_token = false;
         }

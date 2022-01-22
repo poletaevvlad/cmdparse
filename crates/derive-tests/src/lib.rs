@@ -45,8 +45,9 @@ mod unit_struct {
     #[derive(Parsable, Debug, PartialEq, Eq)]
     struct TestParsable;
 
-    test_success!(empty, "remaining" => (TestParsable, "remaining"));
-    test_unrecognized_attr!(unrecognized_attr, "--unknown abc" => ("--unknown", "abc"));
+    test_success!(empty, "" => (TestParsable, ""));
+    test_success!(followed_by_token, "remaining" => (TestParsable, "remaining"));
+    test_success!(followed_by_attr, "--remaining" => (TestParsable, "--remaining"));
 }
 
 mod newtype_struct {
@@ -72,8 +73,8 @@ mod multiple_args {
 
     test_success!(success, "1 2 3" => (TestParsable{ a: 1, b: 2.0 }, "3"));
     test_unrecognized_attr!(unrecognized_attr, "--attr 1 2 3" => ("attr", "1 2 3"));
-    test_failed!(attr_between_fields, " 1 --attr 2 3" => ParseError::unknown_attribute("attr"));
-    test_success!(attr_after_fields, " 1 2 --attr 3" => (TestParsable{ a: 1, b: 2.0 }, "--attr 3"));
+    test_failed!(attr_between_fields, "1 --attr 2 3" => ParseError::unknown_attribute("attr"));
+    test_success!(attr_after_fields, "1 2 --attr 3" => (TestParsable{ a: 1, b: 2.0 }, "--attr 3"));
 }
 
 mod custom_ctx {
@@ -169,4 +170,45 @@ mod custom_ctx_bounds {
             ParseResult::Parsed(NewtypeCustomCtx(20), "2")
         );
     }
+}
+
+mod some_optional {
+    use super::*;
+
+    #[derive(Debug, PartialEq, Eq, Parsable)]
+    struct TestParsable(
+        u16,
+        #[cmd(attr(opt), default = "5")] usize,
+        #[cmd(attr(yes = "true", false = "false"))] bool,
+    );
+
+    test_failed!(not_enough_tokens, "" => ParseError::token_required("integer"));
+    test_success!(all_optional_missing, "10" => (TestParsable(10, 5, false), ""));
+    test_success!(has_uszie, "10 --opt 2 rest" => (TestParsable(10, 2, false), "rest"));
+    test_success!(has_attr_with_value, "10 --yes rest" => (TestParsable(10, 5, true), "rest"));
+    test_success!(has_all_fields, "10 --yes --opt 7 rest" => (TestParsable(10, 7, true), "rest"));
+    test_success!(stops_after_required_finished, "10 --unknown --yes rest" => (TestParsable(10, 5, false), "--unknown --yes rest"));
+    test_success!(keeps_taking_tokens, "10 --yes --unknown rest" => (TestParsable(10, 5, true), "--unknown rest"));
+    test_unrecognized_attr!(unrecognized_attr, "--unknown 10" => ("unknown", "10"));
+}
+
+mod all_optional {
+    use super::*;
+
+    #[derive(Debug, PartialEq, Eq, Parsable)]
+    struct TestParsable {
+        #[cmd(attr(a))]
+        a: u16,
+        #[cmd(attr(b))]
+        b: u16,
+        #[cmd(attr(c))]
+        c: u16,
+    }
+
+    test_success!(none_specified, "abc" => (TestParsable{ a: 0, b: 0, c: 0 }, "abc"));
+    test_success!(none_specified_attr, "--unknown abc" => (TestParsable{ a: 0, b: 0, c: 0 }, "--unknown abc"));
+    test_success!(only_one, "--a 10 abc" => (TestParsable{ a: 10, b: 0, c: 0 }, "abc"));
+    test_success!(two_specified, "--a 10 --b 20 abc" => (TestParsable{ a: 10, b: 20, c: 0 }, "abc"));
+    test_success!(all_specified, "--a 10 --b 20 --c 30 abc" => (TestParsable{ a: 10, b: 20, c: 30 }, "abc"));
+    test_success!(stop_on_unknown_attr, "--a 10 --unknown --a 10" => (TestParsable{ a: 10, b: 0, c: 0 }, "--unknown --a 10"));
 }
