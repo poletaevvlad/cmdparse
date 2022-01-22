@@ -9,7 +9,7 @@ use std::borrow::Cow;
 
 #[derive(Debug, PartialEq)]
 pub enum ParseResult<'a, T> {
-    Unrecognized(ParseError<'a>),
+    UnrecognizedAttribute(Cow<'a, str>, &'a str),
     Parsed(T, &'a str),
     Failed(ParseError<'a>),
 }
@@ -17,7 +17,9 @@ pub enum ParseResult<'a, T> {
 impl<'a, T> ParseResult<'a, T> {
     pub fn map<R, F: FnOnce(T) -> R>(self, func: F) -> ParseResult<'a, R> {
         match self {
-            ParseResult::Unrecognized(error) => ParseResult::Unrecognized(error),
+            ParseResult::UnrecognizedAttribute(attr, remaining) => {
+                ParseResult::UnrecognizedAttribute(attr, remaining)
+            }
             ParseResult::Parsed(result, remaining) => ParseResult::Parsed(func(result), remaining),
             ParseResult::Failed(error) => ParseResult::Failed(error),
         }

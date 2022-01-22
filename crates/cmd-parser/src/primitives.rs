@@ -78,9 +78,7 @@ where
     fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
         let (token, remaining) = take_token(input);
         match token {
-            Token::Attribute(attribute) => {
-                ParseResult::Unrecognized(ParseError::unknown_attribute(attribute))
-            }
+            Token::Attribute(attribute) => ParseResult::UnrecognizedAttribute(attribute, remaining),
             Token::Text(token) if token.is_empty() => {
                 ParseResult::Failed(ParseError::token_required("integer"))
             }
@@ -120,9 +118,7 @@ where
     fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
         let (token, remaining) = take_token(input);
         match token {
-            Token::Attribute(attribute) => {
-                ParseResult::Unrecognized(ParseError::unknown_attribute(attribute))
-            }
+            Token::Attribute(attribute) => ParseResult::UnrecognizedAttribute(attribute, remaining),
             Token::Text(token) if token.is_empty() => {
                 ParseResult::Failed(ParseError::token_required("real number"))
             }
@@ -151,9 +147,7 @@ impl<Ctx> Parser<Ctx> for StringParser {
     fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
         let (token, remaining) = take_token(input);
         match token {
-            Token::Attribute(attribute) => {
-                ParseResult::Unrecognized(ParseError::unknown_attribute(attribute))
-            }
+            Token::Attribute(attribute) => ParseResult::UnrecognizedAttribute(attribute, remaining),
             Token::Text(token) if token.is_empty() => {
                 ParseResult::Failed(ParseError::token_required("string"))
             }
@@ -183,9 +177,7 @@ impl<Ctx> Parser<Ctx> for BooleanParser {
     fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
         let (token, remaining) = take_token(input);
         match token {
-            Token::Attribute(attribute) => {
-                ParseResult::Unrecognized(ParseError::unknown_attribute(attribute))
-            }
+            Token::Attribute(attribute) => ParseResult::UnrecognizedAttribute(attribute, remaining),
             Token::Text(token) if token.is_empty() => {
                 ParseResult::Failed(ParseError::token_required("boolean"))
             }
@@ -236,7 +228,7 @@ mod tests {
             let parser = IntegerParser::<u16>::create(());
             assert_eq!(
                 Parser::<()>::parse(&parser, "--unknown abc"),
-                ParseResult::Unrecognized(ParseError::unknown_attribute("unknown"))
+                ParseResult::UnrecognizedAttribute("unknown".into(), "abc")
             );
         }
 
@@ -339,7 +331,7 @@ mod tests {
             let parser = RealParser::<f64>::create(());
             assert_eq!(
                 Parser::<()>::parse(&parser, "--unknown abc"),
-                ParseResult::Unrecognized(ParseError::unknown_attribute("unknown"))
+                ParseResult::UnrecognizedAttribute("unknown".into(), "abc")
             );
         }
 
@@ -379,7 +371,7 @@ mod tests {
             let parser = StringParser::create(());
             assert_eq!(
                 Parser::<()>::parse(&parser, "--unknown abc"),
-                ParseResult::Unrecognized(ParseError::unknown_attribute("unknown"))
+                ParseResult::UnrecognizedAttribute("unknown".into(), "abc")
             );
         }
     }
@@ -447,7 +439,7 @@ mod tests {
             let parser = BooleanParser::create(());
             assert_eq!(
                 Parser::<()>::parse(&parser, "--unknown abc"),
-                ParseResult::Unrecognized(ParseError::unknown_attribute("unknown"))
+                ParseResult::UnrecognizedAttribute("unknown".into(), "abc")
             );
         }
 

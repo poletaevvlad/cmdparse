@@ -1,11 +1,10 @@
+use crate::error::ParseError;
+use crate::tokens::{has_tokens, skip_ws, take_token, Token};
+use crate::{CompletionResult, Parsable, ParseResult, Parser};
 use std::cmp::Ord;
 use std::collections::{BTreeSet, HashSet, LinkedList, VecDeque};
 use std::hash::Hash;
 use std::marker::PhantomData;
-
-use crate::error::{ParseError, ParseErrorKind};
-use crate::tokens::{has_tokens, skip_ws, take_token, Token};
-use crate::{CompletionResult, Parsable, ParseResult, Parser};
 
 pub fn parse_inner<'a, Ctx, P: Parser<Ctx>>(
     mut input: &'a str,
@@ -16,9 +15,10 @@ pub fn parse_inner<'a, Ctx, P: Parser<Ctx>>(
     if let Some(input) = input.strip_prefix('(') {
         let (result, mut remaining) = match parser.parse(input) {
             ParseResult::Parsed(result, remaining) => (result, remaining),
-            ParseResult::Unrecognized(error) | ParseResult::Failed(error) => {
-                return ParseResult::Failed(error)
+            ParseResult::UnrecognizedAttribute(attr, _) => {
+                return ParseResult::Failed(ParseError::unknown_attribute(attr));
             }
+            ParseResult::Failed(error) => return ParseResult::Failed(error),
         };
         if remaining.starts_with(')') {
             remaining = skip_ws(&remaining[1..]);
@@ -133,17 +133,13 @@ impl<Ctx, C: ParsableCollection<Ctx> + Default> Parser<Ctx> for CollectionParser
                     input = remaining;
                     result.append(value);
                 }
-                ParseResult::Unrecognized(err)
-                    if err.kind() == ParseErrorKind::UnknownAttribute =>
-                {
+                ParseResult::UnrecognizedAttribute(attribute, remaining) => {
                     if is_first {
-                        return ParseResult::Unrecognized(err);
+                        return ParseResult::UnrecognizedAttribute(attribute, remaining);
                     }
                     break;
                 }
-                ParseResult::Unrecognized(err) | ParseResult::Failed(err) => {
-                    return ParseResult::Failed(err)
-                }
+                ParseResult::Failed(err) => return ParseResult::Failed(err),
             }
             is_first = false;
         }
@@ -222,10 +218,10 @@ macro_rules! gen_parsable_tuple {
                         input = remaining;
                         value
                     }
-                    ParseResult::Unrecognized(err) if err.kind() == ParseErrorKind::UnknownAttribute => {
-                        return ParseResult::Unrecognized(err)
+                     ParseResult::UnrecognizedAttribute(token, remaining) => {
+                        return ParseResult::UnrecognizedAttribute(token, remaining)
                     }
-                    ParseResult::Failed(err) | ParseResult::Unrecognized(err) => {
+                    ParseResult::Failed(err) => {
                         return ParseResult::Failed(err)
                     }
                 };
@@ -235,7 +231,8 @@ macro_rules! gen_parsable_tuple {
                             input = remaining;
                             value
                         }
-                        ParseResult::Unrecognized(err) | ParseResult::Failed(err) => {
+                        ParseResult::UnrecognizedAttribute(attr, _) => return ParseResult::Failed(ParseError::unknown_attribute(attr)),
+                         ParseResult::Failed(err) => {
                             return ParseResult::Failed(err)
                         }
                     };
@@ -325,11 +322,7 @@ impl<Ctx, T: Parsable<Ctx>> Parser<Ctx> for OptionParser<Ctx, T> {
     fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
         if has_tokens(input) {
             match self.inner_parser.parse(input).map(Some) {
-                ParseResult::Unrecognized(error)
-                    if error.kind() == ParseErrorKind::UnknownAttribute =>
-                {
-                    ParseResult::Parsed(None, input)
-                }
+                ParseResult::UnrecognizedAttribute(_, _) => ParseResult::Parsed(None, input),
                 result => result,
             }
         } else {
@@ -499,7 +492,7 @@ mod tests {
             let parser = <Vec<Vec<i32>> as Parsable<()>>::new_parser(());
             assert_eq!(
                 parser.parse("--unknown (1 2) (3 4) 5"),
-                ParseResult::Unrecognized(ParseError::unknown_attribute("unknown")),
+                ParseResult::UnrecognizedAttribute("unknown".into(), "(1 2) (3 4) 5"),
             );
             assert_eq!(
                 parser.complete("--unknown (1 2) (3 4) 5"),
@@ -574,7 +567,7 @@ mod tests {
             let parser = <(u8, u8) as Parsable<()>>::new_parser(());
             assert_eq!(
                 parser.parse("--unknown"),
-                ParseResult::Unrecognized(ParseError::unknown_attribute("unknown")),
+                ParseResult::UnrecognizedAttribute("unknown".into(), ""),
             );
             assert_eq!(parser.complete("--unknown"), CompletionResult::Unrecognized,);
         }
