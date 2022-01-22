@@ -1,117 +1,79 @@
 use cmd_parser::{Parsable, ParseError, ParseResult, Parser};
 
+macro_rules! test_success {
+    ($name:ident, $input:expr => ($value:expr, $remaining:expr)) => {
+        #[test]
+        fn $name() {
+            let parser = TestParsable::new_parser(());
+            assert_eq!(
+                Parser::<()>::parse(&parser, $input),
+                ParseResult::Parsed($value, $remaining)
+            );
+        }
+    };
+}
+
+macro_rules! test_unrecognized_attr {
+    ($name:ident, $input:expr => ($token:expr, $remaining:expr)) => {
+        #[test]
+        fn $name() {
+            let parser = TestParsable::new_parser(());
+            assert_eq!(
+                Parser::<()>::parse(&parser, $input),
+                ParseResult::UnrecognizedAttribute($token.into(), $remaining)
+            );
+        }
+    };
+}
+
+macro_rules! test_failed {
+    ($name:ident, $input:expr => $err:expr) => {
+        #[test]
+        fn $name() {
+            let parser = TestParsable::new_parser(());
+            assert_eq!(
+                Parser::<()>::parse(&parser, $input),
+                ParseResult::Failed($err)
+            );
+        }
+    };
+}
+
 mod unit_struct {
     use super::*;
 
     #[derive(Parsable, Debug, PartialEq, Eq)]
-    struct UnitStruct;
+    struct TestParsable;
 
-    #[test]
-    fn derserializes_empty() {
-        let parser = UnitStruct::new_parser(());
-        assert_eq!(
-            Parser::<()>::parse(&parser, "remaining"),
-            ParseResult::Parsed(UnitStruct, "remaining")
-        );
-    }
-
-    #[test]
-    fn unrecognized_attr() {
-        let parser = UnitStruct::new_parser(());
-        assert_eq!(
-            Parser::<()>::parse(&parser, "--unknown abc"),
-            ParseResult::UnrecognizedAttribute("unknown".into(), "abc")
-        );
-    }
+    test_success!(empty, "remaining" => (TestParsable, "remaining"));
+    test_unrecognized_attr!(unrecognized_attr, "--unknown abc" => ("--unknown", "abc"));
 }
 
 mod newtype_struct {
     use super::*;
 
     #[derive(Parsable, Debug, PartialEq, Eq)]
-    struct NewtypeStruct(u16);
+    struct TestParsable(u16);
 
-    #[test]
-    fn require_token() {
-        let parser = NewtypeStruct::new_parser(());
-        assert_eq!(
-            Parser::<()>::parse(&parser, ""),
-            ParseResult::Failed(ParseError::token_required("integer")),
-        );
-    }
-
-    #[test]
-    fn parse_error() {
-        let parser = NewtypeStruct::new_parser(());
-        assert_eq!(
-            Parser::<()>::parse(&parser, "abc"),
-            ParseResult::Failed(ParseError::token_parse("abc".into(), None, "integer")),
-        );
-    }
-
-    #[test]
-    fn parse_success() {
-        let parser = NewtypeStruct::new_parser(());
-        assert_eq!(
-            Parser::<()>::parse(&parser, "15 abc"),
-            ParseResult::Parsed(NewtypeStruct(15), "abc"),
-        );
-    }
-
-    #[test]
-    fn parse_unknown_attribute() {
-        let parser = NewtypeStruct::new_parser(());
-        assert_eq!(
-            Parser::<()>::parse(&parser, "--attr 15 abc"),
-            ParseResult::UnrecognizedAttribute("attr".into(), "15 abc"),
-        );
-    }
+    test_failed!(requre_token, "" => ParseError::token_required("integer"));
+    test_failed!(parse_error, "abc" => ParseError::token_parse("abc".into(), None, "integer"));
+    test_success!(success, "15 abc" => (TestParsable(15), "abc"));
+    test_unrecognized_attr!(unrecognized_attr, "--attr 15 abc" => ("attr", "15 abc"));
 }
 
 mod multiple_args {
     use super::*;
 
     #[derive(Debug, Parsable, PartialEq)]
-    struct TwoFields {
+    struct TestParsable {
         a: i32,
         b: f64,
     }
 
-    #[test]
-    fn parse_success() {
-        let parser = TwoFields::new_parser(());
-        assert_eq!(
-            Parser::<()>::parse(&parser, "1 2 3"),
-            ParseResult::Parsed(TwoFields { a: 1, b: 2.0 }, "3")
-        );
-    }
-
-    #[test]
-    fn parse_unrecognized_attr() {
-        let parser = TwoFields::new_parser(());
-        assert_eq!(
-            Parser::<()>::parse(&parser, "--attr 1 2 3"),
-            ParseResult::UnrecognizedAttribute("attr".into(), "1 2 3"),
-        );
-    }
-
-    #[test]
-    fn parse_unrecognized_attr_between_fields() {
-        let parser = TwoFields::new_parser(());
-        assert_eq!(
-            Parser::<()>::parse(&parser, "1 --attr 2 3"),
-            ParseResult::Failed(ParseError::unknown_attribute("attr")),
-        );
-    }
-
-    #[test]
-    fn parse_unrecognized_attr_after_fields() {
-        let parser = TwoFields::new_parser(());
-        assert_eq!(
-            Parser::<()>::parse(&parser, "1 2 --attr 3"),
-            ParseResult::Parsed(TwoFields { a: 1, b: 2.0 }, "--attr 3")
-        );
-    }
+    test_success!(success, "1 2 3" => (TestParsable{ a: 1, b: 2.0 }, "3"));
+    test_unrecognized_attr!(unrecognized_attr, "--attr 1 2 3" => ("attr", "1 2 3"));
+    test_failed!(attr_between_fields, " 1 --attr 2 3" => ParseError::unknown_attribute("attr"));
+    test_success!(attr_after_fields, " 1 2 --attr 3" => (TestParsable{ a: 1, b: 2.0 }, "--attr 3"));
 }
 
 mod custom_ctx {
