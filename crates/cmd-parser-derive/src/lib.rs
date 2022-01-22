@@ -4,7 +4,7 @@ mod fields_gen;
 mod gen;
 
 use attributes::{BuildableAttributes, TypeAttributes};
-use fields::{FieldsSet, ParsableContext};
+use fields::{ContextType, FieldsSet, ParsableContext};
 use fields_gen::gen_parse_struct;
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
@@ -19,7 +19,11 @@ fn derive_struct<'a>(
     data: &'a syn::DataStruct,
 ) -> DeriveResult {
     let fieldset = FieldsSet::from_fields(ctx, &data.fields)?;
-    let parse_tokens = gen_parse_struct(quote! { #name }, fieldset);
+    let context_ident = match &ctx.context_type {
+        Some(ContextType::Concrete(ty)) => quote! {#ty},
+        _ => quote! {CmdParserCtx},
+    };
+    let parse_tokens = gen_parse_struct(quote! { #name }, context_ident, fieldset);
     Ok((parse_tokens, quote! {todo!()}))
 }
 

@@ -32,10 +32,10 @@ mod parsers {
             let ident = index.ident();
             match parser {
                 Parser::Explicit(explicit) => quote! {
-                    #ident: <#explicit as ::cmd_parser::Parser<#generic>>::create(ctx)
+                    #ident: <#explicit as ::cmd_parser::Parser<#generic>>::create(ctx.clone())
                 },
                 Parser::FromParsable(ty) => quote! {
-                    #ident: <#ty as ::cmd_parser::Parsable<#generic>>::new_parser(ctx)
+                    #ident: <#ty as ::cmd_parser::Parsable<#generic>>::new_parser(ctx.clone())
                 },
             }
         });
@@ -98,10 +98,10 @@ mod generics {
         if include_ctx {
             match ctx.context_type {
                 Some(ContextType::Generic(ref bounds)) => {
-                    params.push(quote! {CmdParserCtx: #bounds});
+                    params.push(quote! {CmdParserCtx: #bounds + Clone});
                 }
                 Some(ContextType::Concrete(_)) => {}
-                None => params.push(quote! {CmdParserCtx}),
+                None => params.push(quote! {CmdParserCtx: Clone}),
             }
         }
 
@@ -136,7 +136,7 @@ pub(crate) fn implementation(
     let parser_usage_generics = generics::usage(ctx, !ctx.parsers.is_empty());
 
     quote! {
-        struct #parser_struct_generics #parser_name #where_clause { #parsers_definition }
+        struct #parser_name #parser_struct_generics #where_clause { #parsers_definition }
 
         impl #trait_generics ::cmd_parser::Parser #ctx_generics for #parser_name #parser_usage_generics #where_clause {
             type Value = #type_name #type_generics;
@@ -145,7 +145,7 @@ pub(crate) fn implementation(
                 #parser_name { #parsers_initialization }
             }
 
-            fn parse<'a>(&self, input: &'a str) -> ::cmd_parser::ParseResult<'a, Self::Value> {
+            fn parse<'a>(&self, mut input: &'a str) -> ::cmd_parser::ParseResult<'a, Self::Value> {
                 #parse_impl
             }
 
@@ -208,8 +208,8 @@ mod tests {
 
             let initialization = initialization(&ctx);
             let initialization_expected = quote! {
-                parser_0: <super::Parser as ::cmd_parser::Parser<CmdParserCtx>>::create(ctx),
-                parser_1: <u8 as ::cmd_parser::Parsable<CmdParserCtx>>::new_parser(ctx),
+                parser_0: <super::Parser as ::cmd_parser::Parser<CmdParserCtx>>::create(ctx.clone()),
+                parser_1: <u8 as ::cmd_parser::Parsable<CmdParserCtx>>::new_parser(ctx.clone()),
             };
             assert_tokens_eq(initialization, initialization_expected);
         }
@@ -238,8 +238,8 @@ mod tests {
 
             let initialization = initialization(&ctx);
             let initialization_expected = quote! {
-                parser_0: <super::Parser as ::cmd_parser::Parser<CustomCtx>>::create(ctx),
-                parser_1: <u8 as ::cmd_parser::Parsable<CustomCtx>>::new_parser(ctx),
+                parser_0: <super::Parser as ::cmd_parser::Parser<CustomCtx>>::create(ctx.clone()),
+                parser_1: <u8 as ::cmd_parser::Parsable<CustomCtx>>::new_parser(ctx.clone()),
             };
             assert_tokens_eq(initialization, initialization_expected);
         }
@@ -271,7 +271,7 @@ mod tests {
             );
             assert_tokens_eq(
                 definition(&ctx, true),
-                quote! {<'a, 'b: 'a, CmdParserCtx, T:Iterator<Item = u8>, const X: u8 = 5>},
+                quote! {<'a, 'b: 'a, CmdParserCtx: Clone, T:Iterator<Item = u8>, const X: u8 = 5>},
             );
         }
 
@@ -282,7 +282,7 @@ mod tests {
             assert_tokens_eq(usage(&ctx, true), quote! {<CmdParserCtx>});
 
             assert_tokens_eq(definition(&ctx, false), quote! {});
-            assert_tokens_eq(definition(&ctx, true), quote! {<CmdParserCtx>});
+            assert_tokens_eq(definition(&ctx, true), quote! {<CmdParserCtx: Clone>});
         }
 
         #[test]
@@ -333,7 +333,7 @@ mod tests {
             );
             assert_tokens_eq(
                 definition(&ctx, true),
-                quote! {<'a, 'b: 'a, CmdParserCtx: Send + Sync, T:Iterator<Item = u8>, const X: u8 = 5>},
+                quote! {<'a, 'b: 'a, CmdParserCtx: Send + Sync + Clone, T:Iterator<Item = u8>, const X: u8 = 5>},
             );
         }
 
@@ -352,7 +352,10 @@ mod tests {
             assert_tokens_eq(usage(&ctx, true), quote! {<CmdParserCtx>});
 
             assert_tokens_eq(definition(&ctx, false), quote! {});
-            assert_tokens_eq(definition(&ctx, true), quote! {<CmdParserCtx: Send + Sync>});
+            assert_tokens_eq(
+                definition(&ctx, true),
+                quote! {<CmdParserCtx: Send + Sync + Clone>},
+            );
         }
     }
 
@@ -371,20 +374,21 @@ mod tests {
                 quote! {complete!()},
             );
 
+            // TODO: No need to clone the context if there are fewer then one parsers
             let expected = quote! {
                 struct NoFieldsParser {}
 
-                impl<CmdParserCtx> ::cmd_parser::Parser<CmdParserCtx> for NoFieldsParser {
+                impl<CmdParserCtx: Clone> ::cmd_parser::Parser<CmdParserCtx> for NoFieldsParser {
                     type Value = NoFields;
 
                     fn create(ctx: CmdParserCtx) -> Self {
                         NoFieldsParser{}
                     }
-                    fn parse<'a>(&self, input: &'a str) -> ::cmd_parser::ParseResult<'a, Self::Value> { parse!() }
+                    fn parse<'a>(&self, mut input: &'a str) -> ::cmd_parser::ParseResult<'a, Self::Value> { parse!() }
                     fn complete<'a>(&self, input: &'a str) -> ::cmd_parser::CompletionResult<'a> { complete!() }
                 }
 
-                impl<CmdParserCtx> ::cmd_parser::Parsable<CmdParserCtx> for NoFields {
+                impl<CmdParserCtx: Clone> ::cmd_parser::Parsable<CmdParserCtx> for NoFields {
                     type Parser = NoFieldsParser;
                 }
             };
@@ -424,11 +428,11 @@ mod tests {
 
                     fn create(ctx: CustomCtx) -> Self {
                         WithConcreteCtxParser{
-                            parser_0: <super::Parser as ::cmd_parser::Parser<CustomCtx>>::create(ctx),
-                            parser_1: <u8 as ::cmd_parser::Parsable<CustomCtx>>::new_parser(ctx),
+                            parser_0: <super::Parser as ::cmd_parser::Parser<CustomCtx>>::create(ctx.clone()),
+                            parser_1: <u8 as ::cmd_parser::Parsable<CustomCtx>>::new_parser(ctx.clone()),
                         }
                     }
-                    fn parse<'a>(&self, input: &'a str) -> ::cmd_parser::ParseResult<'a, Self::Value> { parse!() }
+                    fn parse<'a>(&self, mut input: &'a str) -> ::cmd_parser::ParseResult<'a, Self::Value> { parse!() }
                     fn complete<'a>(&self, input: &'a str) -> ::cmd_parser::CompletionResult<'a> { complete!() }
                 }
 
@@ -465,25 +469,25 @@ mod tests {
             );
 
             let expected = quote! {
-                struct<'a, CmdParserCtx: Send + Sync, T: Parsable<CmdParserCtx>> WithGenericsParser {
+                struct WithGenericsParser<'a, CmdParserCtx: Send + Sync + Clone, T: Parsable<CmdParserCtx>> {
                     parser_0: super::ParserA<'a, T>,
                     parser_1: super::ParserB<'a>,
                 }
 
-                impl<'a, CmdParserCtx: Send + Sync, T: Parsable<CmdParserCtx>> ::cmd_parser::Parser<CmdParserCtx> for WithGenericsParser<'a, CmdParserCtx, T> {
+                impl<'a, CmdParserCtx: Send + Sync + Clone, T: Parsable<CmdParserCtx>> ::cmd_parser::Parser<CmdParserCtx> for WithGenericsParser<'a, CmdParserCtx, T> {
                     type Value = WithGenerics<'a, T>;
 
                     fn create(ctx: CmdParserCtx) -> Self {
                         WithGenericsParser{
-                            parser_0: <super::ParserA<'a, T> as ::cmd_parser::Parser<CmdParserCtx>>::create(ctx),
-                            parser_1: <super::ParserB<'a> as ::cmd_parser::Parser<CmdParserCtx>>::create(ctx),
+                            parser_0: <super::ParserA<'a, T> as ::cmd_parser::Parser<CmdParserCtx>>::create(ctx.clone()),
+                            parser_1: <super::ParserB<'a> as ::cmd_parser::Parser<CmdParserCtx>>::create(ctx.clone()),
                         }
                     }
-                    fn parse<'a>(&self, input: &'a str) -> ::cmd_parser::ParseResult<'a, Self::Value> { parse!() }
+                    fn parse<'a>(&self, mut input: &'a str) -> ::cmd_parser::ParseResult<'a, Self::Value> { parse!() }
                     fn complete<'a>(&self, input: &'a str) -> ::cmd_parser::CompletionResult<'a> { complete!() }
                 }
 
-                impl<'a, CmdParserCtx: Send + Sync, T: Parsable<CmdParserCtx>> ::cmd_parser::Parsable<CmdParserCtx> for WithGenerics<'a, T> {
+                impl<'a, CmdParserCtx: Send + Sync + Clone, T: Parsable<CmdParserCtx>> ::cmd_parser::Parsable<CmdParserCtx> for WithGenerics<'a, T> {
                     type Parser = WithGenericsParser<'a, CmdParserCtx, T>;
                 }
             };

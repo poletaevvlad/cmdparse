@@ -12,12 +12,12 @@ impl<'a> FieldView<'a> {
             FieldView::Default { .. } => TokenStream::new(),
             _ => {
                 let var_ident = self.var_ident();
-                quote! { let #var_ident = None; }
+                quote! { let mut #var_ident = None; }
             }
         }
     }
 
-    fn gen_parse_required(&self) -> TokenStream {
+    fn gen_parse_required(&self, ctx: &TokenStream) -> TokenStream {
         match self {
             FieldView::Required {
                 position, parser, ..
@@ -26,12 +26,9 @@ impl<'a> FieldView<'a> {
                 let parser_ident = parser.ident();
 
                 quote! {
-                    #position => match self.#parser_ident.parse(input) {
-                        ::cmd_parser::ParseResult::Unrecognized(err)
-                            if err.kind() == ::cmd_parser::ParseErrorKind::UnknownAttribute => {}
-                        ::cmd_parser::ParseResult::Unrecognized(err) | ::cmd_parser::ParseResult::Failed(error) => {
-                            return ::cmd_parser::ParseResult::Failed(err)
-                        }
+                    #position => match ::cmd_parser::Parser::<#ctx>::parse(&self.#parser_ident, input) {
+                        ::cmd_parser::ParseResult::UnrecognizedAttribute(attr, remaining) => (attr, remaining),
+                        ::cmd_parser::ParseResult::Failed(error) => return ::cmd_parser::ParseResult::Failed(error),
                         ::cmd_parser::ParseResult::Parsed(result, remaining) => {
                             input = remaining;
                             #var_ident = Some(result);
@@ -46,19 +43,21 @@ impl<'a> FieldView<'a> {
         }
     }
 
-    fn gen_parse_optional(&self) -> TokenStream {
+    fn gen_parse_optional(&self, ctx: &TokenStream) -> TokenStream {
         match self {
             FieldView::Optional { parser, name, .. } => {
                 let parser_ident = parser.ident();
                 let var_ident = self.var_ident();
                 quote! {
                     #name => {
-                        match self.#parser_ident.parse(remaining) {
+                        match ::cmd_parser::Parser::<#ctx>::parse(&self.#parser_ident, remaining) {
                             ::cmd_parser::ParseResult::Parsed(result, remaining) => {
                                 input = remaining;
                                 #var_ident = Some(result);
                             }
-                            ::cmd_parser::ParseResult::Unrecofnized(error) | ::cmd_parser::ParseReult::Failed(error) => {
+                            ::cmd_parser::ParseResult::UnrecognizedAttribute(attr, _) =>
+                                ::cmd_parser::ParseResult::Failed(::cmd_parser::ParseError::unknown_attribute(attr)),
+                            ::cmd_parser::ParseReult::Failed(error) => {
                                 return ParseResult::Failed(error)
                             }
                         }
@@ -107,16 +106,22 @@ impl<'a> FieldView<'a> {
     }
 }
 
-pub(crate) fn gen_parse_struct(constructor: TokenStream, fields: FieldsSet<'_>) -> TokenStream {
+pub(crate) fn gen_parse_struct(
+    constructor: TokenStream,
+    ctx: TokenStream,
+    fields: FieldsSet<'_>,
+) -> TokenStream {
     let mut initialization = TokenStream::new();
     let mut required_parsing = TokenStream::new();
     let mut optional_parsing = TokenStream::new();
     let mut unwrap_fields = TokenStream::new();
 
+    let mut required_count: usize = 0;
+
     for field in fields.fields_views() {
         initialization.extend(field.gen_var_instantiate());
-        required_parsing.extend(field.gen_parse_required());
-        optional_parsing.extend(field.gen_parse_optional());
+        required_parsing.extend(field.gen_parse_required(&ctx));
+        optional_parsing.extend(field.gen_parse_optional(&ctx));
 
         let unwrap_value = field.gen_unwrap();
         let unwrap_field = match fields.get_ident(field.field_index()) {
@@ -124,6 +129,10 @@ pub(crate) fn gen_parse_struct(constructor: TokenStream, fields: FieldsSet<'_>) 
             None => quote! { #unwrap_value, },
         };
         unwrap_fields.extend(unwrap_field);
+
+        if matches!(field, FieldView::Required { .. }) {
+            required_count += 1;
+        }
     }
 
     let result_struct = match fields.struct_type() {
@@ -135,27 +144,23 @@ pub(crate) fn gen_parse_struct(constructor: TokenStream, fields: FieldsSet<'_>) 
     quote! {
         #initialization
         let mut required_index = 0;
-        let first_token = true;
+        let mut first_token = true;
         loop {
-            match required_index {
+            let (attr, remaining) = match required_index {
                 #required_parsing
-                _ => break,
-            }
-            let (token, remaining) = ::cmd_parser::tokens::take_token(input);
-            match token {
-                ::cmd_parser::tokens::Token::Attribute(attr) => match attr {
-                    #optional_parsing
-                    attr => {
-                        let error = ::cmd_parser::ParseError::unknown_attribute(attr);
-                        return match first_token {
-                            true => ::cmd_parser::ParseResult::Unrecognized(error),
-                            false => ::cmd_parser::ParseResult::Failed(error),
-                        };
+                _ => {
+                    let (token, remaining) = ::cmd_parser::tokens::take_token(input);
+                    match token {
+                        ::cmd_parser::tokens::Token::Text(_) => break,
+                        ::cmd_parser::tokens::Token::Attribute(attr) => (attr, remaining),
                     }
                 }
-                ::cmd_parser::tokens::Token::Text(_) => {
-                    panic!("Parser failure: parse function returned unknown attribure error but the input does not begin with an attribute");
-                }
+            };
+            match attr {
+                #optional_parsing
+                attr if first_token => return ::cmd_parser::ParseResult::UnrecognizedAttribute(attr, remaining),
+                attr if required_index >= #required_count => break,
+                attr => return ::cmd_parser::ParseResult::Failed(::cmd_parser::ParseError::unknown_attribute(attr)),
             }
             first_token = false;
         }
