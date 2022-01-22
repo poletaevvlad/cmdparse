@@ -1,5 +1,3 @@
-// mod x;
-
 use cmd_parser::{Parsable, ParseError, ParseResult, Parser};
 
 mod unit_struct {
@@ -112,6 +110,101 @@ mod multiple_args {
         assert_eq!(
             Parser::<()>::parse(&parser, "1 2 --attr 3"),
             ParseResult::Parsed(TwoFields { a: 1, b: 2.0 }, "--attr 3")
+        );
+    }
+}
+
+mod custom_ctx {
+    use super::*;
+
+    struct MyParser {
+        multiplier: u8,
+        u8_parser: <u8 as Parsable<u8>>::Parser,
+    }
+
+    impl Parser<u8> for MyParser {
+        type Value = u8;
+
+        fn create(ctx: u8) -> Self {
+            MyParser {
+                multiplier: ctx,
+                u8_parser: <u8 as Parsable<u8>>::new_parser(ctx),
+            }
+        }
+
+        fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
+            Parser::<u8>::parse(&self.u8_parser, input).map(|val| val * self.multiplier)
+        }
+
+        fn complete<'a>(&self, input: &'a str) -> cmd_parser::CompletionResult<'a> {
+            Parser::<u8>::complete(&self.u8_parser, input)
+        }
+    }
+
+    #[derive(Debug, PartialEq, Eq, Parsable)]
+    #[cmd(ctx = "u8")]
+    struct NewtypeCustomCtx(#[cmd(parser = "MyParser")] u8);
+
+    #[test]
+    fn parse() {
+        let parser = NewtypeCustomCtx::new_parser(4);
+        assert_eq!(
+            Parser::<u8>::parse(&parser, "5 2"),
+            ParseResult::Parsed(NewtypeCustomCtx(20), "2")
+        );
+    }
+}
+
+mod custom_ctx_bounds {
+    use super::*;
+
+    trait CustomCtx {
+        fn get_multiplier(&self) -> u8;
+    }
+
+    struct MyParser<Ctx: CustomCtx> {
+        multiplier: u8,
+        u8_parser: <u8 as Parsable<Ctx>>::Parser,
+    }
+
+    impl<Ctx: CustomCtx> Parser<Ctx> for MyParser<Ctx> {
+        type Value = u8;
+
+        fn create(ctx: Ctx) -> Self {
+            MyParser {
+                multiplier: ctx.get_multiplier(),
+                u8_parser: <u8 as Parsable<Ctx>>::new_parser(ctx),
+            }
+        }
+
+        fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
+            Parser::<u8>::parse(&self.u8_parser, input).map(|val| val * self.multiplier)
+        }
+
+        fn complete<'a>(&self, input: &'a str) -> cmd_parser::CompletionResult<'a> {
+            Parser::<u8>::complete(&self.u8_parser, input)
+        }
+    }
+
+    #[derive(Debug, PartialEq, Eq, Parsable)]
+    #[cmd(ctx_bounds = "CustomCtx")]
+    struct NewtypeCustomCtx(#[cmd(parser = "MyParser<CmdParserCtx>")] u8);
+
+    #[derive(Clone)]
+    struct MockCtx;
+
+    impl CustomCtx for MockCtx {
+        fn get_multiplier(&self) -> u8 {
+            4
+        }
+    }
+
+    #[test]
+    fn parse() {
+        let parser = NewtypeCustomCtx::new_parser(MockCtx);
+        assert_eq!(
+            Parser::<MockCtx>::parse(&parser, "5 2"),
+            ParseResult::Parsed(NewtypeCustomCtx(20), "2")
         );
     }
 }
