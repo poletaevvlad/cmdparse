@@ -28,17 +28,28 @@ mod parsers {
 
     pub(crate) fn initialization(ctx: &ParsableContext) -> TokenStream {
         let generic = ctx_generic(ctx);
-        let initializations = ctx.parsers.iter().map(|(parser, index)| {
-            let ident = index.ident();
-            match parser {
-                Parser::Explicit(explicit) => quote! {
-                    #ident: <#explicit as ::cmd_parser::Parser<#generic>>::create(ctx.clone())
-                },
-                Parser::FromParsable(ty) => quote! {
-                    #ident: <#ty as ::cmd_parser::Parsable<#generic>>::new_parser(ctx.clone())
-                },
-            }
-        });
+        let parsers_len = ctx.parsers.len();
+        let initializations = ctx
+            .parsers
+            .iter()
+            .enumerate()
+            .map(|(idx, (parser, index))| {
+                let ident = index.ident();
+                let clone_call = if idx == parsers_len.saturating_sub(1) {
+                    TokenStream::new()
+                } else {
+                    quote! {.clone()}
+                };
+
+                match parser {
+                    Parser::Explicit(explicit) => quote! {
+                        #ident: <#explicit as ::cmd_parser::Parser<#generic>>::create(ctx #clone_call)
+                    },
+                    Parser::FromParsable(ty) => quote! {
+                        #ident: <#ty as ::cmd_parser::Parsable<#generic>>::new_parser(ctx #clone_call)
+                    },
+                }
+            });
         quote! { #(#initializations,)* }
     }
 }
@@ -210,7 +221,7 @@ mod tests {
             let initialization = initialization(&ctx);
             let initialization_expected = quote! {
                 parser_0: <super::Parser as ::cmd_parser::Parser<CmdParserCtx>>::create(ctx.clone()),
-                parser_1: <u8 as ::cmd_parser::Parsable<CmdParserCtx>>::new_parser(ctx.clone()),
+                parser_1: <u8 as ::cmd_parser::Parsable<CmdParserCtx>>::new_parser(ctx),
             };
             assert_tokens_eq(initialization, initialization_expected);
         }
@@ -240,7 +251,7 @@ mod tests {
             let initialization = initialization(&ctx);
             let initialization_expected = quote! {
                 parser_0: <super::Parser as ::cmd_parser::Parser<CustomCtx>>::create(ctx.clone()),
-                parser_1: <u8 as ::cmd_parser::Parsable<CustomCtx>>::new_parser(ctx.clone()),
+                parser_1: <u8 as ::cmd_parser::Parsable<CustomCtx>>::new_parser(ctx),
             };
             assert_tokens_eq(initialization, initialization_expected);
         }
@@ -431,7 +442,7 @@ mod tests {
                     fn create(ctx: CustomCtx) -> Self {
                         WithConcreteCtxParser{
                             parser_0: <super::Parser as ::cmd_parser::Parser<CustomCtx>>::create(ctx.clone()),
-                            parser_1: <u8 as ::cmd_parser::Parsable<CustomCtx>>::new_parser(ctx.clone()),
+                            parser_1: <u8 as ::cmd_parser::Parsable<CustomCtx>>::new_parser(ctx),
                         }
                     }
                     #[allow(unreachable_code)]
@@ -483,7 +494,7 @@ mod tests {
                     fn create(ctx: CmdParserCtx) -> Self {
                         WithGenericsParser{
                             parser_0: <super::ParserA<'a, T> as ::cmd_parser::Parser<CmdParserCtx>>::create(ctx.clone()),
-                            parser_1: <super::ParserB<'a> as ::cmd_parser::Parser<CmdParserCtx>>::create(ctx.clone()),
+                            parser_1: <super::ParserB<'a> as ::cmd_parser::Parser<CmdParserCtx>>::create(ctx),
                         }
                     }
                     #[allow(unreachable_code)]
