@@ -38,6 +38,10 @@ impl<'a> ParsableContext<'a> {
             .entry(parser)
             .or_insert_with(|| ParserIndex(items_count))
     }
+
+    pub(crate) fn ctx_requires_clone(&self) -> bool {
+        self.parsers.len() > 1
+    }
 }
 
 pub(crate) enum FieldView<'a> {

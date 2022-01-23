@@ -109,10 +109,20 @@ mod generics {
         if include_ctx {
             match ctx.context_type {
                 Some(ContextType::Generic(ref bounds)) => {
-                    params.push(quote! {CmdParserCtx: #bounds + Clone});
+                    let clone_call = match ctx.ctx_requires_clone() {
+                        true => quote! { + Clone},
+                        false => TokenStream::new(),
+                    };
+                    params.push(quote! {CmdParserCtx: #bounds #clone_call});
                 }
                 Some(ContextType::Concrete(_)) => {}
-                None => params.push(quote! {CmdParserCtx: Clone}),
+                None => {
+                    let clone_call = match ctx.ctx_requires_clone() {
+                        true => quote! {: Clone},
+                        false => TokenStream::new(),
+                    };
+                    params.push(quote! {CmdParserCtx #clone_call});
+                }
             }
         }
 
@@ -272,7 +282,7 @@ mod tests {
         }
 
         #[test]
-        fn usage_null_context_type() {
+        fn null_context_type() {
             let ctx = make_context_with_generic();
             assert_tokens_eq(usage(&ctx, false), quote! {<'a, 'b, T, X>});
             assert_tokens_eq(usage(&ctx, true), quote! {<'a, 'b, CmdParserCtx, T, X>});
@@ -283,22 +293,22 @@ mod tests {
             );
             assert_tokens_eq(
                 definition(&ctx, true),
-                quote! {<'a, 'b: 'a, CmdParserCtx: Clone, T:Iterator<Item = u8>, const X: u8 = 5>},
+                quote! {<'a, 'b: 'a, CmdParserCtx, T:Iterator<Item = u8>, const X: u8 = 5>},
             );
         }
 
         #[test]
-        fn usage_null_context_type_no_generics() {
+        fn null_context_type_no_generics() {
             let ctx = ParsableContext::default();
             assert_tokens_eq(usage(&ctx, false), quote! {});
             assert_tokens_eq(usage(&ctx, true), quote! {<CmdParserCtx>});
 
             assert_tokens_eq(definition(&ctx, false), quote! {});
-            assert_tokens_eq(definition(&ctx, true), quote! {<CmdParserCtx: Clone>});
+            assert_tokens_eq(definition(&ctx, true), quote! {<CmdParserCtx>});
         }
 
         #[test]
-        fn usage_concrete_context() {
+        fn concrete_context() {
             let mut ctx = make_context_with_generic();
             ctx.context_type = Some(ContextType::Concrete(syn::parse2(quote! {u8}).unwrap()));
             assert_tokens_eq(usage(&ctx, false), quote! {<'a, 'b, T, X>});
@@ -315,7 +325,7 @@ mod tests {
         }
 
         #[test]
-        fn usage_concrete_context_no_generics() {
+        fn concrete_context_no_generics() {
             let ctx = ParsableContext {
                 context_type: Some(ContextType::Concrete(syn::parse2(quote! {u8}).unwrap())),
                 ..Default::default()
@@ -328,7 +338,7 @@ mod tests {
         }
 
         #[test]
-        fn usage_generic_context() {
+        fn generic_context() {
             let mut ctx = make_context_with_generic();
             ctx.context_type = Some(ContextType::Generic(Box::new(
                 syn::parse2::<syn::TypeParam>(quote! {T: Send + Sync})
@@ -345,12 +355,12 @@ mod tests {
             );
             assert_tokens_eq(
                 definition(&ctx, true),
-                quote! {<'a, 'b: 'a, CmdParserCtx: Send + Sync + Clone, T:Iterator<Item = u8>, const X: u8 = 5>},
+                quote! {<'a, 'b: 'a, CmdParserCtx: Send + Sync, T:Iterator<Item = u8>, const X: u8 = 5>},
             );
         }
 
         #[test]
-        fn usage_generic_context_no_generics() {
+        fn generic_context_no_generics() {
             let ctx = ParsableContext {
                 context_type: Some(ContextType::Generic(Box::new(
                     syn::parse2::<syn::TypeParam>(quote! {T: Send + Sync})
@@ -364,10 +374,7 @@ mod tests {
             assert_tokens_eq(usage(&ctx, true), quote! {<CmdParserCtx>});
 
             assert_tokens_eq(definition(&ctx, false), quote! {});
-            assert_tokens_eq(
-                definition(&ctx, true),
-                quote! {<CmdParserCtx: Send + Sync + Clone>},
-            );
+            assert_tokens_eq(definition(&ctx, true), quote! {<CmdParserCtx: Send + Sync>});
         }
     }
 
@@ -386,11 +393,10 @@ mod tests {
                 quote! {complete!()},
             );
 
-            // TODO: No need to clone the context if there are fewer then one parsers
             let expected = quote! {
                 struct NoFieldsParser {}
 
-                impl<CmdParserCtx: Clone> ::cmd_parser::Parser<CmdParserCtx> for NoFieldsParser {
+                impl<CmdParserCtx> ::cmd_parser::Parser<CmdParserCtx> for NoFieldsParser {
                     type Value = NoFields;
 
                     fn create(ctx: CmdParserCtx) -> Self {
@@ -401,7 +407,7 @@ mod tests {
                     fn complete<'a>(&self, input: &'a str) -> ::cmd_parser::CompletionResult<'a> { complete!() }
                 }
 
-                impl<CmdParserCtx: Clone> ::cmd_parser::Parsable<CmdParserCtx> for NoFields {
+                impl<CmdParserCtx> ::cmd_parser::Parsable<CmdParserCtx> for NoFields {
                     type Parser = NoFieldsParser;
                 }
             };
