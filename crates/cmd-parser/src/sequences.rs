@@ -354,7 +354,40 @@ impl<Ctx, T: Parsable<Ctx>> Parsable<Ctx> for Option<T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{CompletionResult, Parsable, ParseError, ParseResult, Parser};
+    use crate::{
+        tokens::{take_token, Token},
+        CompletionResult, Parsable, ParseError, ParseResult, Parser,
+    };
+
+    #[derive(PartialEq, Eq, Debug)]
+    struct MockEnum;
+
+    struct MockEnumParser;
+
+    impl<Ctx> Parser<Ctx> for MockEnumParser {
+        type Value = MockEnum;
+
+        fn create(_ctx: Ctx) -> Self {
+            MockEnumParser
+        }
+
+        fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
+            let (token, remaining) = take_token(input);
+            match token {
+                Token::Text(text) if text == "variant" => ParseResult::Parsed(MockEnum, remaining),
+                Token::Text(text) => ParseResult::UnrecognizedVariant(text),
+                Token::Attribute(attr) => ParseResult::UnrecognizedAttribute(attr, remaining),
+            }
+        }
+
+        fn complete<'a>(&self, _input: &'a str) -> CompletionResult<'a> {
+            todo!()
+        }
+    }
+
+    impl<Ctx> Parsable<Ctx> for MockEnum {
+        type Parser = MockEnumParser;
+    }
 
     mod collection_parser {
         use super::*;
@@ -534,6 +567,24 @@ mod tests {
                 ParseResult::Failed(ParseError::unknown_attribute("unknown")),
             );
         }
+
+        #[test]
+        fn returns_unrecognized_variant_if_first_is_unrecognized() {
+            let parser = <Vec<MockEnum> as Parsable<()>>::new_parser(());
+            assert_eq!(
+                parser.parse("unknown variant"),
+                ParseResult::UnrecognizedVariant("unknown".into()),
+            );
+        }
+
+        #[test]
+        fn fails_if_variant_is_unrecognized() {
+            let parser = <Vec<MockEnum> as Parsable<()>>::new_parser(());
+            assert_eq!(
+                parser.parse("variant unknown variant"),
+                ParseResult::Failed(ParseError::unknown_variant("unknown")),
+            );
+        }
     }
 
     mod tuple_parser {
@@ -628,6 +679,24 @@ mod tests {
             assert_eq!(
                 parser.parse("1 2 true 4 5 --unknown"),
                 ParseResult::Failed(ParseError::unknown_attribute("unknown")),
+            );
+        }
+
+        #[test]
+        fn returns_unrecognized_variant_if_first_is_unrecognized() {
+            let parser = <(MockEnum, MockEnum) as Parsable<()>>::new_parser(());
+            assert_eq!(
+                parser.parse("unknown variant"),
+                ParseResult::UnrecognizedVariant("unknown".into()),
+            );
+        }
+
+        #[test]
+        fn fails_if_variant_is_unrecognized() {
+            let parser = <(MockEnum, MockEnum) as Parsable<()>>::new_parser(());
+            assert_eq!(
+                parser.parse("variant unknown variant"),
+                ParseResult::Failed(ParseError::unknown_variant("unknown")),
             );
         }
     }
