@@ -145,6 +145,7 @@ pub(crate) fn implementation(
                 #parser_name { #parsers_initialization }
             }
 
+            #[allow(unreachable_code)]
             fn parse<'a>(&self, mut input: &'a str) -> ::cmd_parser::ParseResult<'a, Self::Value> {
                 #parse_impl
             }
@@ -384,6 +385,7 @@ mod tests {
                     fn create(ctx: CmdParserCtx) -> Self {
                         NoFieldsParser{}
                     }
+                    #[allow(unreachable_code)]
                     fn parse<'a>(&self, mut input: &'a str) -> ::cmd_parser::ParseResult<'a, Self::Value> { parse!() }
                     fn complete<'a>(&self, input: &'a str) -> ::cmd_parser::CompletionResult<'a> { complete!() }
                 }
@@ -432,6 +434,7 @@ mod tests {
                             parser_1: <u8 as ::cmd_parser::Parsable<CustomCtx>>::new_parser(ctx.clone()),
                         }
                     }
+                    #[allow(unreachable_code)]
                     fn parse<'a>(&self, mut input: &'a str) -> ::cmd_parser::ParseResult<'a, Self::Value> { parse!() }
                     fn complete<'a>(&self, input: &'a str) -> ::cmd_parser::CompletionResult<'a> { complete!() }
                 }
@@ -483,6 +486,7 @@ mod tests {
                             parser_1: <super::ParserB<'a> as ::cmd_parser::Parser<CmdParserCtx>>::create(ctx.clone()),
                         }
                     }
+                    #[allow(unreachable_code)]
                     fn parse<'a>(&self, mut input: &'a str) -> ::cmd_parser::ParseResult<'a, Self::Value> { parse!() }
                     fn complete<'a>(&self, input: &'a str) -> ::cmd_parser::CompletionResult<'a> { complete!() }
                 }

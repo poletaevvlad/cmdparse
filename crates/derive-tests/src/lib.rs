@@ -1,3 +1,5 @@
+#![cfg(test)]
+
 use cmd_parser::{Parsable, ParseError, ParseResult, Parser};
 
 macro_rules! test_success {
