@@ -214,3 +214,25 @@ mod all_optional {
     test_success!(all_specified, "--a 10 --b 20 --c 30 abc" => (TestParsable{ a: 10, b: 20, c: 30 }, "abc"));
     test_success!(stop_on_unknown_attr, "--a 10 --unknown --a 10" => (TestParsable{ a: 10, b: 0, c: 0 }, "--unknown --a 10"));
 }
+
+mod some_default {
+    use super::*;
+
+    #[derive(Debug, PartialEq, Eq, Parsable)]
+    struct TestParsable(#[cmd(default)] u8, #[cmd(default = "5")] u8, u8);
+
+    test_success!(single_specified, "10 abc" => (TestParsable(0, 5, 10), "abc"));
+    test_failed!(token_requied, "" => ParseError::token_required("integer"));
+    test_unrecognized_attr!(unrecognized_attr, "--unknown abc" => ("unknown", "abc"));
+}
+
+mod all_default {
+    use super::*;
+
+    #[derive(Debug, PartialEq, Eq, Parsable)]
+    struct TestParsable(#[cmd(default)] u8, #[cmd(default = "5")] u8);
+
+    test_success!(empty, "" => (TestParsable(0, 5), ""));
+    test_success!(followed_by_token, "10 abc" => (TestParsable(0, 5), "10 abc"));
+    test_success!(followed_by_attribute, "--unknown abc" => (TestParsable(0, 5), "--unknown abc"));
+}
