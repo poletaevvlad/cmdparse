@@ -70,10 +70,10 @@ impl<'a> ParseError<'a> {
         }
     }
 
-    pub fn unknown_variant(token: Cow<'a, str>, expected: impl Into<Cow<'static, str>>) -> Self {
+    pub fn unknown_variant(token: impl Into<Cow<'a, str>>) -> Self {
         ParseError {
-            variant: ParseErrorVariant::UnknownVariant(token),
-            expected: expected.into(),
+            variant: ParseErrorVariant::UnknownVariant(token.into()),
+            expected: "".into(),
         }
     }
 

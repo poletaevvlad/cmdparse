@@ -236,3 +236,41 @@ mod all_default {
     test_success!(followed_by_token, "10 abc" => (TestParsable(0, 5), "10 abc"));
     test_success!(followed_by_attribute, "--unknown abc" => (TestParsable(0, 5), "--unknown abc"));
 }
+
+mod enum_simple {
+    use super::*;
+
+    #[derive(Debug, PartialEq, Eq, Parsable)]
+    enum TestParsable {
+        First,
+        Second,
+    }
+
+    test_success!(parse_first, "first remaining" => (TestParsable::First, "remaining"));
+    test_success!(parse_second, "second remaining" => (TestParsable::Second, "remaining"));
+    test_failed!(unknown_variant, "third remaining" => ParseError::unknown_variant("third"));
+    test_failed!(variant_required, "" => ParseError::token_required("variant"));
+    test_unrecognized_attr!(unrecognized_attr, "--unknown first" => ("unknown", "first"));
+}
+
+mod enum_ignore_aliases {
+    use super::*;
+
+    #[derive(Debug, PartialEq, Eq, Parsable)]
+    enum TestParsable {
+        #[cmd(alias = "alias")]
+        Real(u8),
+        #[cmd(ignore)]
+        #[allow(dead_code)]
+        Ignored,
+        #[cmd(rename = "new-name")]
+        Renamed,
+    }
+
+    test_success!(parse_normal, "real 10 remaining" => (TestParsable::Real(10), "remaining"));
+    test_failed!(returns_inner_error, "real nan" => ParseError::token_parse("nan".into(), None, "integer"));
+    test_success!(parse_alias, "alias 10 remaining" => (TestParsable::Real(10), "remaining"));
+    test_success!(parse_renamed, "new-name remaining" => (TestParsable::Renamed, "remaining"));
+    test_failed!(cannot_parse_ignored, "ignored remaining" => ParseError::unknown_variant("ignored"));
+    test_failed!(cannot_parse_renamed, "renamed remaining" => ParseError::unknown_variant("renamed"));
+}

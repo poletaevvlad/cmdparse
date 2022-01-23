@@ -31,8 +31,9 @@ pub(crate) fn gen_parse_enum(
     quote! {
         let (token, remaining) = ::cmd_parser::tokens::take_token(input);
         match token {
-            ::cmd_parser::tokens::Token::Text(variant) => match &variant {
+            ::cmd_parser::tokens::Token::Text(variant) => match ::std::borrow::Borrow::<str>::borrow(&variant) {
                 #variants_parsing
+                token if token.is_empty() => ::cmd_parser::ParseResult::Failed(::cmd_parser::ParseError::token_required("variant")),
                 _ => ::cmd_parser::ParseResult::Failed(::cmd_parser::ParseError::unknown_variant(variant)),
             }
             ::cmd_parser::tokens::Token::Attribute(attr) => ::cmd_parser::ParseResult::UnrecognizedAttribute(attr, remaining),
