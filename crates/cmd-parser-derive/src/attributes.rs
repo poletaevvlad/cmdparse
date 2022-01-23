@@ -210,7 +210,7 @@ impl<'a> FieldNamesAttributes<'a> {
         if self.0.contains_key(&name) {
             Err(Error::new(
                 path_span,
-                format!("attribute \"{}\" declared more then once", name),
+                format!("attribute \"{}\" declared more than once", name),
             ))
         } else {
             self.0.insert(name, value);
@@ -238,6 +238,66 @@ fn get_path_string(path: &syn::Path) -> Result<String, Error> {
     path.get_ident()
         .map(|ident| ident.to_string())
         .ok_or_else(|| Error::new(path.span(), "multi-segment paths aren't allowed"))
+}
+
+#[derive(Debug, Default)]
+struct VariantAttributes {
+    aliases: Vec<String>,
+    renamed: Option<String>,
+    ignored: bool,
+    transparent: bool,
+}
+
+impl BuildableAttributes for VariantAttributes {
+    fn visit_path(&mut self, path: &syn::Path) -> Result<(), Error> {
+        if compare_path(path, "ignore") {
+            if self.renamed.is_some() {
+                return Err(Error::new(
+                    path.span(),
+                    "ignore and rename have no effect together",
+                ));
+            }
+            self.ignored = true;
+            Ok(())
+        } else if compare_path(path, "transparent") {
+            self.transparent = true;
+            Ok(())
+        } else {
+            Err(unknown_attr_error(path))
+        }
+    }
+
+    fn visit_name_value(&mut self, name_value: &syn::MetaNameValue) -> Result<(), Error> {
+        if compare_path(&name_value.path, "rename") {
+            if self.ignored {
+                return Err(Error::new(
+                    name_value.path.span(),
+                    "ignore and rename have no effect together",
+                ));
+            }
+            if self.renamed.is_some() {
+                return Err(Error::new(
+                    name_value.span(),
+                    "variant cannot be renamed more than once",
+                ));
+            }
+            let value = get_name_value_string(name_value)?;
+            self.renamed = Some(value);
+            Ok(())
+        } else if compare_path(&name_value.path, "alias") {
+            let value = get_name_value_string(name_value)?;
+            if self.aliases.contains(&value) {
+                return Err(Error::new(
+                    name_value.span(),
+                    "duplicate aliases are not allowed",
+                ));
+            }
+            self.aliases.push(value);
+            Ok(())
+        } else {
+            Err(unknown_attr_error(&name_value.path))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -410,7 +470,73 @@ mod tests {
             let error = FieldAttributes::from_attributes(attrs.iter()).unwrap_err();
             assert_eq!(
                 &error.to_string(),
-                "attribute \"one\" declared more then once"
+                "attribute \"one\" declared more than once"
+            );
+        }
+    }
+
+    mod variant_attributes {
+        use super::super::VariantAttributes;
+        use super::*;
+
+        #[test]
+        fn with_aliases() {
+            let attrs = [make_attribute(
+                "cmd",
+                quote! {(ignore, alias="first", alias = "second")},
+            )];
+            let attributes = VariantAttributes::from_attributes(attrs.iter()).unwrap();
+            assert!(attributes.ignored);
+            assert!(attributes.renamed.is_none());
+            assert_eq!(
+                attributes.aliases,
+                vec!["first".to_string(), "second".to_string()]
+            );
+        }
+
+        #[test]
+        fn with_rename() {
+            let attrs = [make_attribute("cmd", quote! {(rename = "renamed")})];
+            let attributes = VariantAttributes::from_attributes(attrs.iter()).unwrap();
+            assert!(!attributes.ignored);
+            assert_eq!(attributes.renamed, Some("renamed".to_string()));
+            assert!(attributes.aliases.is_empty());
+        }
+
+        #[test]
+        fn error_duplicate_rename() {
+            let attrs = [make_attribute("cmd", quote! {(rename = "a", rename = "b")})];
+            let error = VariantAttributes::from_attributes(attrs.iter()).unwrap_err();
+            assert_eq!(
+                &error.to_string(),
+                "variant cannot be renamed more than once"
+            );
+        }
+
+        #[test]
+        fn error_duplicate_aliases() {
+            let attrs = [make_attribute("cmd", quote! {(alias = "a", alias = "a")})];
+            let error = VariantAttributes::from_attributes(attrs.iter()).unwrap_err();
+            assert_eq!(&error.to_string(), "duplicate aliases are not allowed");
+        }
+
+        #[test]
+        fn error_ignore_and_rename() {
+            let attrs = [make_attribute("cmd", quote! {(rename = "a", ignore)})];
+            let error = VariantAttributes::from_attributes(attrs.iter()).unwrap_err();
+            assert_eq!(
+                &error.to_string(),
+                "ignore and rename have no effect together"
+            );
+        }
+
+        #[test]
+        fn error_ignore_and_rename_flipped() {
+            let attrs = [make_attribute("cmd", quote! {(ignore, rename = "a")})];
+            let error = VariantAttributes::from_attributes(attrs.iter()).unwrap_err();
+            assert_eq!(
+                &error.to_string(),
+                "ignore and rename have no effect together"
             );
         }
     }
