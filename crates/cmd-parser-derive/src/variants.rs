@@ -2,12 +2,12 @@ use crate::attributes::{BuildableAttributes, VariantAttributes};
 use crate::fields::{FieldsSet, ParsableContext};
 
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct Variant {
+struct Variant {
     label: String,
     fieldset_index: usize,
 }
 
-pub(crate) struct VariantFieldsSet<'a> {
+struct VariantFieldsSet<'a> {
     ident: &'a syn::Ident,
     fieldset: FieldsSet<'a>,
 }
@@ -15,6 +15,12 @@ pub(crate) struct VariantFieldsSet<'a> {
 pub(crate) struct VariantsSet<'a> {
     variants: Vec<Variant>,
     fieldsets: Vec<VariantFieldsSet<'a>>,
+}
+
+pub(crate) struct VariantView<'a> {
+    pub(crate) ident: &'a syn::Ident,
+    pub(crate) fields: &'a FieldsSet<'a>,
+    pub(crate) label: &'a str,
 }
 
 impl<'a> VariantsSet<'a> {
@@ -58,6 +64,17 @@ impl<'a> VariantsSet<'a> {
         }
 
         Ok(result)
+    }
+
+    pub(crate) fn variant_views(&self) -> impl Iterator<Item = VariantView<'_>> {
+        self.variants.iter().map(|variant| {
+            let fields = &self.fieldsets[variant.fieldset_index];
+            VariantView {
+                ident: fields.ident,
+                fields: &fields.fieldset,
+                label: variant.label.as_str(),
+            }
+        })
     }
 }
 

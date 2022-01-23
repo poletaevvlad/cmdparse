@@ -111,8 +111,8 @@ impl<'a> FieldView<'a> {
 
 pub(crate) fn gen_parse_struct(
     constructor: TokenStream,
-    ctx: TokenStream,
-    fields: FieldsSet<'_>,
+    ctx: &TokenStream,
+    fields: &FieldsSet<'_>,
 ) -> TokenStream {
     let mut initialization = TokenStream::new();
     let mut required_parsing = TokenStream::new();
@@ -123,8 +123,8 @@ pub(crate) fn gen_parse_struct(
     let mut initialized_field_indices = HashSet::new();
 
     for field in fields.fields_views() {
-        required_parsing.extend(field.gen_parse_required(&ctx));
-        optional_parsing.extend(field.gen_parse_optional(&ctx));
+        required_parsing.extend(field.gen_parse_required(ctx));
+        optional_parsing.extend(field.gen_parse_optional(ctx));
 
         let index = field.field_index();
         if !initialized_field_indices.contains(&index) {
