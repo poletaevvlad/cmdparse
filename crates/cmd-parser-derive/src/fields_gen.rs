@@ -26,10 +26,16 @@ impl<'a> FieldView<'a> {
             } => {
                 let var_ident = self.var_ident();
                 let parser_ident = parser.ident();
+                let unrecognized_variant = if *position == 0 {
+                    quote! {::cmd_parser::ParseResult::UnrecognizedVariant(variant)}
+                } else {
+                    quote! {::cmd_parser::ParseResult::Failed(::cmd_parser::ParseError::unknown_variant(variant))}
+                };
 
                 quote! {
                     #position => match ::cmd_parser::Parser::<#ctx>::parse(&self.#parser_ident, input) {
                         ::cmd_parser::ParseResult::UnrecognizedAttribute(attr, remaining) => (attr, remaining),
+                        ::cmd_parser::ParseResult::UnrecognizedVariant(variant) => return #unrecognized_variant,
                         ::cmd_parser::ParseResult::Failed(error) => return ::cmd_parser::ParseResult::Failed(error),
                         ::cmd_parser::ParseResult::Parsed(result, remaining) => {
                             input = remaining;
@@ -59,6 +65,8 @@ impl<'a> FieldView<'a> {
                             }
                             ::cmd_parser::ParseResult::UnrecognizedAttribute(attr, _) =>
                                 return ::cmd_parser::ParseResult::Failed(::cmd_parser::ParseError::unknown_attribute(attr)),
+                            ::cmd_parser::ParseResult::UnrecognizedVariant(variant) =>
+                                return ::cmd_parser::ParseResult::Failed(::cmd_parser::ParseError::unknown_variant(variant)),
                             ::cmd_parser::ParseResult::Failed(error) => {
                                 return ParseResult::Failed(error)
                             }

@@ -10,6 +10,7 @@ use std::borrow::Cow;
 #[derive(Debug, PartialEq)]
 pub enum ParseResult<'a, T> {
     UnrecognizedAttribute(Cow<'a, str>, &'a str),
+    UnrecognizedVariant(Cow<'a, str>),
     Parsed(T, &'a str),
     Failed(ParseError<'a>),
 }
@@ -20,9 +21,17 @@ impl<'a, T> ParseResult<'a, T> {
             ParseResult::UnrecognizedAttribute(attr, remaining) => {
                 ParseResult::UnrecognizedAttribute(attr, remaining)
             }
+            ParseResult::UnrecognizedVariant(attr) => ParseResult::UnrecognizedVariant(attr),
             ParseResult::Parsed(result, remaining) => ParseResult::Parsed(func(result), remaining),
             ParseResult::Failed(error) => ParseResult::Failed(error),
         }
+    }
+
+    pub fn is_unrecognized(&self) -> bool {
+        matches!(
+            self,
+            ParseResult::UnrecognizedVariant(..) | ParseResult::UnrecognizedAttribute(..)
+        )
     }
 }
 

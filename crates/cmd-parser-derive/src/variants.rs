@@ -15,12 +15,18 @@ struct VariantFieldsSet<'a> {
 pub(crate) struct VariantsSet<'a> {
     variants: Vec<Variant>,
     fieldsets: Vec<VariantFieldsSet<'a>>,
+    transparent: Vec<usize>,
 }
 
 pub(crate) struct VariantView<'a> {
     pub(crate) ident: &'a syn::Ident,
     pub(crate) fields: &'a FieldsSet<'a>,
     pub(crate) label: &'a str,
+}
+
+pub(crate) struct TransparentVariantView<'a> {
+    pub(crate) ident: &'a syn::Ident,
+    pub(crate) fields: &'a FieldsSet<'a>,
 }
 
 impl<'a> VariantsSet<'a> {
@@ -31,6 +37,7 @@ impl<'a> VariantsSet<'a> {
         let mut result = VariantsSet {
             variants: Vec::new(),
             fieldsets: Vec::new(),
+            transparent: Vec::new(),
         };
 
         for variant in variants {
@@ -46,20 +53,24 @@ impl<'a> VariantsSet<'a> {
                 fieldset,
             });
 
-            if !attributes.ignored {
-                let label = attributes
-                    .renamed
-                    .unwrap_or_else(|| variant_to_kebab_case(&variant.ident.to_string()));
-                result.variants.push(Variant {
-                    label,
-                    fieldset_index,
-                });
-            }
-            for alias in attributes.aliases {
-                result.variants.push(Variant {
-                    label: alias,
-                    fieldset_index,
-                });
+            if attributes.transparent {
+                result.transparent.push(fieldset_index);
+            } else {
+                if !attributes.ignored {
+                    let label = attributes
+                        .renamed
+                        .unwrap_or_else(|| variant_to_kebab_case(&variant.ident.to_string()));
+                    result.variants.push(Variant {
+                        label,
+                        fieldset_index,
+                    });
+                }
+                for alias in attributes.aliases {
+                    result.variants.push(Variant {
+                        label: alias,
+                        fieldset_index,
+                    });
+                }
             }
         }
 
@@ -73,6 +84,16 @@ impl<'a> VariantsSet<'a> {
                 ident: fields.ident,
                 fields: &fields.fieldset,
                 label: variant.label.as_str(),
+            }
+        })
+    }
+
+    pub(crate) fn transparent_variants(&self) -> impl Iterator<Item = TransparentVariantView> {
+        self.transparent.iter().map(|index| {
+            let fields = &self.fieldsets[*index];
+            TransparentVariantView {
+                ident: fields.ident,
+                fields: &fields.fieldset,
             }
         })
     }

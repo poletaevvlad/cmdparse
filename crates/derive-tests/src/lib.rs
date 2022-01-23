@@ -1,4 +1,4 @@
-#![cfg(test)]
+// #![cfg(test)]
 
 use cmd_parser::{Parsable, ParseError, ParseResult, Parser};
 
@@ -36,6 +36,19 @@ macro_rules! test_failed {
             assert_eq!(
                 Parser::<()>::parse(&parser, $input),
                 ParseResult::Failed($err)
+            );
+        }
+    };
+}
+
+macro_rules! test_unrecognized_variant {
+    ($name:ident, $input:expr => $variant:expr) => {
+        #[test]
+        fn $name() {
+            let parser = TestParsable::new_parser(());
+            assert_eq!(
+                Parser::<()>::parse(&parser, $input),
+                ParseResult::UnrecognizedVariant($variant.into())
             );
         }
     };
@@ -248,7 +261,7 @@ mod enum_simple {
 
     test_success!(parse_first, "first remaining" => (TestParsable::First, "remaining"));
     test_success!(parse_second, "second remaining" => (TestParsable::Second, "remaining"));
-    test_failed!(unknown_variant, "third remaining" => ParseError::unknown_variant("third"));
+    test_unrecognized_variant!(unknown_variant, "third remaining" => "third");
     test_failed!(variant_required, "" => ParseError::token_required("variant"));
     test_unrecognized_attr!(unrecognized_attr, "--unknown first" => ("unknown", "first"));
 }
@@ -271,6 +284,37 @@ mod enum_ignore_aliases {
     test_failed!(returns_inner_error, "real nan" => ParseError::token_parse("nan".into(), None, "integer"));
     test_success!(parse_alias, "alias 10 remaining" => (TestParsable::Real(10), "remaining"));
     test_success!(parse_renamed, "new-name remaining" => (TestParsable::Renamed, "remaining"));
-    test_failed!(cannot_parse_ignored, "ignored remaining" => ParseError::unknown_variant("ignored"));
-    test_failed!(cannot_parse_renamed, "renamed remaining" => ParseError::unknown_variant("renamed"));
+    test_unrecognized_variant!(cannot_parse_ignored, "ignored remaining" => "ignored");
+    test_unrecognized_variant!(cannot_parse_renamed, "renamed remaining" => "renamed");
+}
+
+mod enum_transparent {
+    use super::*;
+
+    #[derive(Debug, PartialEq, Eq, Parsable)]
+    enum Letter {
+        A,
+        B,
+        C,
+    }
+
+    #[derive(Debug, PartialEq, Eq, Parsable)]
+    enum Number {
+        One,
+        Two,
+        Three,
+    }
+
+    #[derive(Debug, PartialEq, Eq, Parsable)]
+    enum TestParsable {
+        #[cmd(transparent)]
+        Letter(Letter),
+        #[cmd(transparent)]
+        Number(Number),
+    }
+
+    test_success!(parse_letter_1, "a abc" => (TestParsable::Letter(Letter::A), "abc"));
+    test_success!(parse_letter_2, "b abc" => (TestParsable::Letter(Letter::B), "abc"));
+    test_success!(parse_number, "two abc" => (TestParsable::Number(Number::Two), "abc"));
+    test_unrecognized_variant!(unknown_variant, "five remaining" => "five");
 }

@@ -18,6 +18,9 @@ pub fn parse_inner<'a, Ctx, P: Parser<Ctx>>(
             ParseResult::UnrecognizedAttribute(attr, _) => {
                 return ParseResult::Failed(ParseError::unknown_attribute(attr));
             }
+            ParseResult::UnrecognizedVariant(variant) => {
+                return ParseResult::UnrecognizedVariant(variant)
+            }
             ParseResult::Failed(error) => return ParseResult::Failed(error),
         };
         if remaining.starts_with(')') {
@@ -139,6 +142,12 @@ impl<Ctx, C: ParsableCollection<Ctx> + Default> Parser<Ctx> for CollectionParser
                     }
                     break;
                 }
+                ParseResult::UnrecognizedVariant(variant) if is_first => {
+                    return ParseResult::UnrecognizedVariant(variant)
+                }
+                ParseResult::UnrecognizedVariant(variant) => {
+                    return ParseResult::Failed(ParseError::unknown_variant(variant))
+                }
                 ParseResult::Failed(err) => return ParseResult::Failed(err),
             }
             is_first = false;
@@ -218,8 +227,11 @@ macro_rules! gen_parsable_tuple {
                         input = remaining;
                         value
                     }
-                     ParseResult::UnrecognizedAttribute(token, remaining) => {
+                    ParseResult::UnrecognizedAttribute(token, remaining) => {
                         return ParseResult::UnrecognizedAttribute(token, remaining)
+                    }
+                    ParseResult::UnrecognizedVariant(variant) => {
+                        return ParseResult::UnrecognizedVariant(variant)
                     }
                     ParseResult::Failed(err) => {
                         return ParseResult::Failed(err)
@@ -232,6 +244,7 @@ macro_rules! gen_parsable_tuple {
                             value
                         }
                         ParseResult::UnrecognizedAttribute(attr, _) => return ParseResult::Failed(ParseError::unknown_attribute(attr)),
+                        ParseResult::UnrecognizedVariant(variant) => return ParseResult::Failed(ParseError::unknown_variant(variant)),
                          ParseResult::Failed(err) => {
                             return ParseResult::Failed(err)
                         }
