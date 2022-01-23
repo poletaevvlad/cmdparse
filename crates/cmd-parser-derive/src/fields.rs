@@ -258,6 +258,7 @@ mod tests {
             assert!(fieldset.fields.is_empty());
             assert_eq!(fieldset.struct_type(), StructType::Unit);
         }
+
         #[test]
         fn tuple_struct() {
             let struct_ = quote! { struct Mock(

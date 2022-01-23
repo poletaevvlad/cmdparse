@@ -2,6 +2,7 @@ mod attributes;
 mod fields;
 mod fields_gen;
 mod gen;
+mod variants;
 
 use attributes::{BuildableAttributes, TypeAttributes};
 use fields::{ContextType, FieldsSet, ParsableContext};

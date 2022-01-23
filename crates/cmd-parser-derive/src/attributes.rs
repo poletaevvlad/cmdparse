@@ -241,11 +241,11 @@ fn get_path_string(path: &syn::Path) -> Result<String, Error> {
 }
 
 #[derive(Debug, Default)]
-struct VariantAttributes {
-    aliases: Vec<String>,
-    renamed: Option<String>,
-    ignored: bool,
-    transparent: bool,
+pub(crate) struct VariantAttributes {
+    pub(crate) aliases: Vec<String>,
+    pub(crate) renamed: Option<String>,
+    pub(crate) ignored: bool,
+    pub(crate) transparent: bool,
 }
 
 impl BuildableAttributes for VariantAttributes {
