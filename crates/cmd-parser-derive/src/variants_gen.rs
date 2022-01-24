@@ -1,12 +1,14 @@
+use crate::context::CodegenContext;
 use crate::fields_gen::gen_parse_struct;
 use crate::variants::{TransparentVariantView, VariantView, VariantsSet};
 use proc_macro2::TokenStream;
 use quote::quote;
 
 impl<'a> VariantView<'a> {
-    fn gen_parse(&self, ident: &syn::Ident, ctx: &TokenStream) -> TokenStream {
+    fn gen_parse(&self, ctx: &CodegenContext) -> TokenStream {
         let label = self.label;
         let variant_ident = self.ident;
+        let ident = ctx.type_name;
         let parse_variant = gen_parse_struct(quote! { #ident::#variant_ident }, ctx, self.fields);
         quote! {
             #label => {
@@ -18,8 +20,9 @@ impl<'a> VariantView<'a> {
 }
 
 impl<'a> TransparentVariantView<'a> {
-    fn gen_parse(&self, ident: &syn::Ident, ctx: &TokenStream) -> TokenStream {
+    fn gen_parse(&self, ctx: &CodegenContext) -> TokenStream {
         let variant_ident = self.ident;
+        let ident = ctx.type_name;
         let parse_variant = gen_parse_struct(quote! { #ident::#variant_ident }, ctx, self.fields);
         quote! {
             let parsed = (||{ #parse_variant })();
@@ -31,17 +34,16 @@ impl<'a> TransparentVariantView<'a> {
 }
 
 pub(crate) fn gen_parse_enum(
-    type_ident: &syn::Ident,
-    ctx: &TokenStream,
+    codegen_ctx: &CodegenContext<'_>,
     variants: &VariantsSet<'_>,
 ) -> TokenStream {
     let variants_parsing = variants
         .variant_views()
-        .map(|variant| variant.gen_parse(type_ident, ctx));
+        .map(|variant| variant.gen_parse(codegen_ctx));
 
     let transparent_parsed = variants
         .transparent_variants()
-        .map(|variant| variant.gen_parse(type_ident, ctx));
+        .map(|variant| variant.gen_parse(codegen_ctx));
 
     quote! {
         let (token, remaining) = ::cmd_parser::tokens::take_token(input);

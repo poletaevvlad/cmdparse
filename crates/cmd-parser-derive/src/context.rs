@@ -1,5 +1,6 @@
 use linked_hash_map::LinkedHashMap;
-use quote::format_ident;
+use proc_macro2::TokenStream;
+use quote::{format_ident, quote};
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub(crate) enum Parser<'a> {
@@ -49,6 +50,13 @@ impl<'a> CodegenContext<'a> {
 
     pub(crate) fn ctx_requires_clone(&self) -> bool {
         self.parsers.len() > 1
+    }
+
+    pub(crate) fn parse_context_ident(&self) -> TokenStream {
+        match &self.context_type {
+            Some(ContextType::Concrete(ty)) => quote! {#ty},
+            _ => quote! {CmdParserCtx},
+        }
     }
 }
 

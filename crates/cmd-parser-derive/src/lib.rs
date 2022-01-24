@@ -7,7 +7,7 @@ mod variants;
 mod variants_gen;
 
 use attributes::{BuildableAttributes, TypeAttributes};
-use context::{CodegenContext, ContextType};
+use context::CodegenContext;
 use fields::FieldsSet;
 use fields_gen::gen_parse_struct;
 use proc_macro::TokenStream;
@@ -21,32 +21,24 @@ type DeriveResult = Result<(TokenStream2, TokenStream2), syn::Error>;
 
 fn derive_struct<'a>(ctx: &mut CodegenContext<'a>, data: &'a syn::DataStruct) -> DeriveResult {
     let fieldset = FieldsSet::from_fields(ctx, &data.fields)?;
-    let context_ident = match &ctx.context_type {
-        Some(ContextType::Concrete(ty)) => quote! {#ty},
-        _ => quote! {CmdParserCtx},
-    };
     let name = ctx.type_name;
-    let parse_tokens = gen_parse_struct(quote! { #name }, &context_ident, &fieldset);
+    let parse_tokens = gen_parse_struct(quote! { #name }, ctx, &fieldset);
     Ok((parse_tokens, quote! {todo!()}))
 }
 
 fn derive_enum<'a>(ctx: &mut CodegenContext<'a>, data: &'a syn::DataEnum) -> DeriveResult {
     let variantset = VariantsSet::from_variants(ctx, data.variants.iter())?;
-    let context_ident = match &ctx.context_type {
-        Some(ContextType::Concrete(ty)) => quote! {#ty},
-        _ => quote! {CmdParserCtx},
-    };
-    let parse_tokens = gen_parse_enum(ctx.type_name, &context_ident, &variantset);
+    let parse_tokens = gen_parse_enum(ctx, &variantset);
     Ok((parse_tokens, quote! {todo!()}))
 }
 
-fn derive<'a>(context: &mut CodegenContext<'a>, input: &'a syn::DeriveInput) -> DeriveResult {
+fn derive<'a>(ctx: &mut CodegenContext<'a>, input: &'a syn::DeriveInput) -> DeriveResult {
     let type_attributes = TypeAttributes::from_attributes(input.attrs.iter())?;
-    context.context_type = type_attributes.context_type;
+    ctx.context_type = type_attributes.context_type;
 
     match &input.data {
-        syn::Data::Struct(data) => derive_struct(context, data),
-        syn::Data::Enum(data) => derive_enum(context, data),
+        syn::Data::Struct(data) => derive_struct(ctx, data),
+        syn::Data::Enum(data) => derive_enum(ctx, data),
         syn::Data::Union(data) => Err(syn::Error::new(
             data.union_token.span(),
             "parsing unions is not supported",

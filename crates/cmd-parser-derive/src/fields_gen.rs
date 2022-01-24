@@ -1,6 +1,9 @@
 use std::collections::HashSet;
 
-use crate::fields::{FieldView, FieldsSet, StructType};
+use crate::{
+    context::CodegenContext,
+    fields::{FieldView, FieldsSet, StructType},
+};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
@@ -19,7 +22,7 @@ impl<'a> FieldView<'a> {
         }
     }
 
-    fn gen_parse_required(&self, ctx: &TokenStream) -> TokenStream {
+    fn gen_parse_required(&self, ctx: &CodegenContext) -> TokenStream {
         match self {
             FieldView::Required {
                 position, parser, ..
@@ -31,9 +34,10 @@ impl<'a> FieldView<'a> {
                 } else {
                     quote! {::cmd_parser::ParseResult::Failed(::cmd_parser::ParseError::unknown_variant(variant))}
                 };
+                let parse_ctx = ctx.parse_context_ident();
 
                 quote! {
-                    #position => match ::cmd_parser::Parser::<#ctx>::parse(&self.#parser_ident, input) {
+                    #position => match ::cmd_parser::Parser::<#parse_ctx>::parse(&self.#parser_ident, input) {
                         ::cmd_parser::ParseResult::UnrecognizedAttribute(attr, remaining) => (attr, remaining),
                         ::cmd_parser::ParseResult::UnrecognizedVariant(variant) => return #unrecognized_variant,
                         ::cmd_parser::ParseResult::Failed(error) => return ::cmd_parser::ParseResult::Failed(error),
@@ -51,14 +55,15 @@ impl<'a> FieldView<'a> {
         }
     }
 
-    fn gen_parse_optional(&self, ctx: &TokenStream) -> TokenStream {
+    fn gen_parse_optional(&self, ctx: &CodegenContext) -> TokenStream {
         match self {
             FieldView::Optional { parser, name, .. } => {
                 let parser_ident = parser.ident();
                 let var_ident = self.var_ident();
+                let parse_ctx = ctx.parse_context_ident();
                 quote! {
                     #name => {
-                        match ::cmd_parser::Parser::<#ctx>::parse(&self.#parser_ident, remaining) {
+                        match ::cmd_parser::Parser::<#parse_ctx>::parse(&self.#parser_ident, remaining) {
                             ::cmd_parser::ParseResult::Parsed(result, remaining) => {
                                 input = remaining;
                                 #var_ident = Some(result);
@@ -119,7 +124,7 @@ impl<'a> FieldView<'a> {
 
 pub(crate) fn gen_parse_struct(
     constructor: TokenStream,
-    ctx: &TokenStream,
+    ctx: &CodegenContext,
     fields: &FieldsSet<'_>,
 ) -> TokenStream {
     let mut initialization = TokenStream::new();
