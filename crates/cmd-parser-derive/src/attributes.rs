@@ -1,7 +1,6 @@
-use std::collections::HashMap;
-
-use crate::fields::ContextType;
+use crate::context::ContextType;
 use proc_macro2::Span;
+use std::collections::HashMap;
 use syn::spanned::Spanned;
 use syn::Error;
 
@@ -303,7 +302,7 @@ impl BuildableAttributes for VariantAttributes {
 #[cfg(test)]
 mod tests {
     use super::BuildableAttributes;
-    use crate::fields::ContextType;
+    use crate::context::ContextType;
     use proc_macro2::{Span, TokenStream};
     use quote::quote;
 

@@ -1,5 +1,6 @@
 use crate::attributes::{BuildableAttributes, VariantAttributes};
-use crate::fields::{FieldsSet, ParsableContext};
+use crate::context::CodegenContext;
+use crate::fields::FieldsSet;
 
 #[derive(Debug, PartialEq, Eq)]
 struct Variant {
@@ -31,7 +32,7 @@ pub(crate) struct TransparentVariantView<'a> {
 
 impl<'a> VariantsSet<'a> {
     pub(crate) fn from_variants(
-        context: &mut ParsableContext<'a>,
+        context: &mut CodegenContext<'a>,
         variants: impl Iterator<Item = &'a syn::Variant>,
     ) -> Result<Self, syn::Error> {
         let mut result = VariantsSet {
@@ -114,7 +115,7 @@ fn variant_to_kebab_case(ident: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{variant_to_kebab_case, Variant, VariantsSet};
-    use crate::fields::ParsableContext;
+    use crate::context::CodegenContext;
     use quote::quote;
 
     #[test]
@@ -135,7 +136,7 @@ mod tests {
             #[cmd(ignore)] Ignored,
         }};
         let variants = syn::parse2::<syn::ItemEnum>(enum_).unwrap().variants;
-        let mut context = ParsableContext::default();
+        let mut context = CodegenContext::default();
 
         let variantsset = VariantsSet::from_variants(&mut context, variants.iter()).unwrap();
 

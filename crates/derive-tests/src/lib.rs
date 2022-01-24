@@ -1,4 +1,4 @@
-// #![cfg(test)]
+#![cfg(test)]
 
 use cmd_parser::{Parsable, ParseError, ParseResult, Parser};
 

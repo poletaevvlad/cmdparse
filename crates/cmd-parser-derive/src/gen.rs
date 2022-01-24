@@ -1,8 +1,8 @@
-use crate::fields::{ContextType, ParsableContext, Parser};
+use crate::context::{CodegenContext, ContextType, Parser};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
-fn ctx_generic(ctx: &ParsableContext) -> TokenStream {
+fn ctx_generic(ctx: &CodegenContext) -> TokenStream {
     match &ctx.context_type {
         Some(ContextType::Generic(_)) | None => quote! {CmdParserCtx},
         Some(ContextType::Concrete(ty)) => quote! {#ty},
@@ -12,7 +12,7 @@ fn ctx_generic(ctx: &ParsableContext) -> TokenStream {
 mod parsers {
     use super::*;
 
-    pub(crate) fn definition(ctx: &ParsableContext) -> TokenStream {
+    pub(crate) fn definition(ctx: &CodegenContext) -> TokenStream {
         let generic = ctx_generic(ctx);
         let definitions = ctx.parsers.iter().map(|(parser, index)| {
             let ident = index.ident();
@@ -26,7 +26,7 @@ mod parsers {
         quote! { #(#definitions,)* }
     }
 
-    pub(crate) fn initialization(ctx: &ParsableContext) -> TokenStream {
+    pub(crate) fn initialization(ctx: &CodegenContext) -> TokenStream {
         let generic = ctx_generic(ctx);
         let parsers_len = ctx.parsers.len();
         let initializations = ctx
@@ -65,12 +65,12 @@ mod generics {
         }
     }
 
-    pub(crate) fn context_usage(ctx: &ParsableContext) -> TokenStream {
+    pub(crate) fn context_usage(ctx: &CodegenContext) -> TokenStream {
         let generic = ctx_generic(ctx);
         quote! {<#generic>}
     }
 
-    pub(crate) fn usage(ctx: &ParsableContext, include_ctx: bool) -> TokenStream {
+    pub(crate) fn usage(ctx: &CodegenContext, include_ctx: bool) -> TokenStream {
         let mut params = Vec::with_capacity(ctx.generics.params.len() + 1);
         params.extend(ctx.generics.lifetimes().map(|lifetime| {
             let lifetime = &lifetime.lifetime;
@@ -100,7 +100,7 @@ mod generics {
         quote_generics(&params)
     }
 
-    pub(crate) fn definition(ctx: &ParsableContext, include_ctx: bool) -> TokenStream {
+    pub(crate) fn definition(ctx: &CodegenContext, include_ctx: bool) -> TokenStream {
         let mut params = Vec::with_capacity(ctx.generics.params.len() + 1);
         params.extend(ctx.generics.lifetimes().map(|lifetime| {
             quote! {#lifetime}
@@ -139,7 +139,7 @@ mod generics {
 
 pub(crate) fn implementation(
     type_name: &syn::Ident,
-    ctx: &ParsableContext,
+    ctx: &CodegenContext,
     parse_impl: TokenStream,
     complete_impl: TokenStream,
 ) -> TokenStream {
@@ -184,7 +184,7 @@ pub(crate) fn implementation(
 
 #[cfg(test)]
 mod tests {
-    use crate::fields::{ContextType, ParsableContext, Parser};
+    use crate::context::{CodegenContext, ContextType, Parser};
     use proc_macro2::TokenStream;
     use quote::quote;
 
@@ -200,7 +200,7 @@ mod tests {
 
         #[test]
         fn empty() {
-            let ctx = ParsableContext::default();
+            let ctx = CodegenContext::default();
 
             let defintion = definition(&ctx);
             let definition_expected = quote! {};
@@ -215,7 +215,7 @@ mod tests {
         fn with_parsers() {
             let ty: syn::Type = syn::parse2(quote! {u8}).unwrap();
 
-            let mut ctx = ParsableContext::default();
+            let mut ctx = CodegenContext::default();
             ctx.push_parser(Parser::Explicit(
                 syn::parse2(quote! {super::Parser}).unwrap(),
             ));
@@ -240,7 +240,7 @@ mod tests {
         fn with_parsers_and_concrete_generics() {
             let ty: syn::Type = syn::parse2(quote! {u8}).unwrap();
 
-            let mut ctx = ParsableContext {
+            let mut ctx = CodegenContext {
                 context_type: Some(ContextType::Concrete(
                     syn::parse2(quote! {CustomCtx}).unwrap(),
                 )),
@@ -271,8 +271,8 @@ mod tests {
         use super::super::generics::{definition, usage};
         use super::*;
 
-        fn make_context_with_generic() -> ParsableContext<'static> {
-            ParsableContext {
+        fn make_context_with_generic() -> CodegenContext<'static> {
+            CodegenContext {
                 generics: syn::parse2(
                     quote! {<'a, 'b: 'a, T: Iterator<Item = u8>, const X: u8 = 5>},
                 )
@@ -299,7 +299,7 @@ mod tests {
 
         #[test]
         fn null_context_type_no_generics() {
-            let ctx = ParsableContext::default();
+            let ctx = CodegenContext::default();
             assert_tokens_eq(usage(&ctx, false), quote! {});
             assert_tokens_eq(usage(&ctx, true), quote! {<CmdParserCtx>});
 
@@ -326,7 +326,7 @@ mod tests {
 
         #[test]
         fn concrete_context_no_generics() {
-            let ctx = ParsableContext {
+            let ctx = CodegenContext {
                 context_type: Some(ContextType::Concrete(syn::parse2(quote! {u8}).unwrap())),
                 ..Default::default()
             };
@@ -361,7 +361,7 @@ mod tests {
 
         #[test]
         fn generic_context_no_generics() {
-            let ctx = ParsableContext {
+            let ctx = CodegenContext {
                 context_type: Some(ContextType::Generic(Box::new(
                     syn::parse2::<syn::TypeParam>(quote! {T: Send + Sync})
                         .unwrap()
@@ -385,7 +385,7 @@ mod tests {
 
         #[test]
         fn no_parsers() {
-            let ctx = ParsableContext::default();
+            let ctx = CodegenContext::default();
             let result = implementation(
                 &format_ident!("NoFields"),
                 &ctx,
@@ -419,7 +419,7 @@ mod tests {
         fn parsers_concrete_ctx() {
             let ty: syn::Type = syn::parse2(quote! {u8}).unwrap();
 
-            let mut ctx = ParsableContext {
+            let mut ctx = CodegenContext {
                 context_type: Some(ContextType::Concrete(
                     syn::parse2(quote! {CustomCtx}).unwrap(),
                 )),
@@ -466,7 +466,7 @@ mod tests {
 
         #[test]
         fn with_generics() {
-            let mut ctx = ParsableContext {
+            let mut ctx = CodegenContext {
                 context_type: Some(ContextType::Generic(Box::new(
                     syn::parse2::<syn::TypeParam>(quote! {T: Send + Sync})
                         .unwrap()

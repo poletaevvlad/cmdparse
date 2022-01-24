@@ -1,48 +1,5 @@
 use crate::attributes::{BuildableAttributes, FieldAttributes};
-use linked_hash_map::LinkedHashMap;
-use quote::format_ident;
-
-#[derive(Debug, Hash, PartialEq, Eq, Clone)]
-pub(crate) enum Parser<'a> {
-    Explicit(syn::Type),
-    FromParsable(&'a syn::Type),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ParserIndex(usize);
-
-impl ParserIndex {
-    pub(crate) fn ident(self) -> syn::Ident {
-        format_ident!("parser_{}", self.0)
-    }
-}
-
-#[derive(Debug)]
-pub(crate) enum ContextType {
-    Generic(Box<syn::punctuated::Punctuated<syn::TypeParamBound, syn::token::Add>>),
-    Concrete(Box<syn::Type>),
-}
-
-#[derive(Default)]
-pub(crate) struct ParsableContext<'a> {
-    pub(crate) context_type: Option<ContextType>,
-    pub(crate) generics: syn::Generics,
-    pub(crate) parsers: LinkedHashMap<Parser<'a>, ParserIndex>,
-}
-
-impl<'a> ParsableContext<'a> {
-    pub(crate) fn push_parser(&mut self, parser: Parser<'a>) -> ParserIndex {
-        let items_count = self.parsers.len();
-        *self
-            .parsers
-            .entry(parser)
-            .or_insert_with(|| ParserIndex(items_count))
-    }
-
-    pub(crate) fn ctx_requires_clone(&self) -> bool {
-        self.parsers.len() > 1
-    }
-}
+use crate::context::{CodegenContext, Parser, ParserIndex};
 
 pub(crate) enum FieldView<'a> {
     Required {
@@ -118,7 +75,7 @@ pub(crate) struct FieldsSet<'a> {
 
 impl<'a> FieldsSet<'a> {
     pub(crate) fn from_fields(
-        context: &mut ParsableContext<'a>,
+        context: &mut CodegenContext<'a>,
         fields: &'a syn::Fields,
     ) -> Result<Self, syn::Error> {
         let mut result = FieldsSet::default();
@@ -241,7 +198,8 @@ impl<'a> FieldsSet<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Field, FieldValue, FieldsSet, ParsableContext, StructType};
+    use super::{Field, FieldValue, FieldsSet, StructType};
+    use crate::context::CodegenContext;
     use quote::quote;
 
     mod parsable_struct {
@@ -251,7 +209,7 @@ mod tests {
         fn unit_struct() {
             let struct_ = quote! { struct Mock; };
             let fields = syn::parse2::<syn::ItemStruct>(struct_).unwrap().fields;
-            let mut context = ParsableContext::default();
+            let mut context = CodegenContext::default();
 
             let fieldset = FieldsSet::from_fields(&mut context, &fields).unwrap();
             assert!(context.parsers.is_empty());
@@ -270,7 +228,7 @@ mod tests {
                 #[cmd(default = "4")] u64,
             ); };
             let fields = syn::parse2::<syn::ItemStruct>(struct_).unwrap().fields;
-            let mut context = ParsableContext::default();
+            let mut context = CodegenContext::default();
 
             let fieldset = FieldsSet::from_fields(&mut context, &fields).unwrap();
             assert!(fieldset.idents.is_empty());
@@ -290,7 +248,7 @@ mod tests {
                 #[cmd(default = "4")] custom_default_only: u64,
             } };
             let fields = syn::parse2::<syn::ItemStruct>(struct_).unwrap().fields;
-            let mut context = ParsableContext::default();
+            let mut context = CodegenContext::default();
 
             let fieldset = FieldsSet::from_fields(&mut context, &fields).unwrap();
 
@@ -325,12 +283,12 @@ mod tests {
 
             let fields: HashSet<_> = fieldset.fields.iter().map(fmt_field).collect();
             let expected_fields: HashSet<_> = [
-                "0, Required(0)",
+                "0, Required(ParserIndex(0))",
                 "1, Fixed(true, None, yes)",
                 "1, Fixed(false, None, no)",
                 "2, Fixed(10, Some(0), a)",
-                "2, Optional(1, Some(0), b)",
-                "3, Optional(2, Some(1), name)",
+                "2, Optional(ParserIndex(1), Some(0), b)",
+                "3, Optional(ParserIndex(2), Some(1), name)",
                 "4, Default(None)",
                 "5, Default(Some(2))",
             ]
@@ -348,7 +306,7 @@ mod tests {
             write!(&mut string, "{}, ", field.field_index).unwrap();
             match &field.value {
                 FieldValue::Required { parser } => {
-                    write!(&mut string, "Required({})", parser.0).unwrap();
+                    write!(&mut string, "Required({:?})", parser).unwrap();
                 }
                 FieldValue::Optional {
                     parser,
@@ -356,8 +314,8 @@ mod tests {
                     name,
                 } => write!(
                     &mut string,
-                    "Optional({}, {:?}, {})",
-                    parser.0, default, name
+                    "Optional({:?}, {:?}, {})",
+                    parser, default, name
                 )
                 .unwrap(),
                 FieldValue::Fixed {
