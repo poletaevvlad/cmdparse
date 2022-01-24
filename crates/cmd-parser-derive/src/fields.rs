@@ -199,7 +199,7 @@ impl<'a> FieldsSet<'a> {
 #[cfg(test)]
 mod tests {
     use super::{Field, FieldValue, FieldsSet, StructType};
-    use crate::context::CodegenContext;
+    use crate::context::MockCodegenContext;
     use quote::quote;
 
     mod parsable_struct {
@@ -209,7 +209,8 @@ mod tests {
         fn unit_struct() {
             let struct_ = quote! { struct Mock; };
             let fields = syn::parse2::<syn::ItemStruct>(struct_).unwrap().fields;
-            let mut context = CodegenContext::default();
+            let mock_context = MockCodegenContext::default();
+            let mut context = mock_context.context();
 
             let fieldset = FieldsSet::from_fields(&mut context, &fields).unwrap();
             assert!(context.parsers.is_empty());
@@ -228,7 +229,8 @@ mod tests {
                 #[cmd(default = "4")] u64,
             ); };
             let fields = syn::parse2::<syn::ItemStruct>(struct_).unwrap().fields;
-            let mut context = CodegenContext::default();
+            let mock_context = MockCodegenContext::default();
+            let mut context = mock_context.context();
 
             let fieldset = FieldsSet::from_fields(&mut context, &fields).unwrap();
             assert!(fieldset.idents.is_empty());
@@ -248,7 +250,8 @@ mod tests {
                 #[cmd(default = "4")] custom_default_only: u64,
             } };
             let fields = syn::parse2::<syn::ItemStruct>(struct_).unwrap().fields;
-            let mut context = CodegenContext::default();
+            let mock_context = MockCodegenContext::default();
+            let mut context = mock_context.context();
 
             let fieldset = FieldsSet::from_fields(&mut context, &fields).unwrap();
 

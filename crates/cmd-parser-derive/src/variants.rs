@@ -115,7 +115,7 @@ fn variant_to_kebab_case(ident: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{variant_to_kebab_case, Variant, VariantsSet};
-    use crate::context::CodegenContext;
+    use crate::context::MockCodegenContext;
     use quote::quote;
 
     #[test]
@@ -136,8 +136,8 @@ mod tests {
             #[cmd(ignore)] Ignored,
         }};
         let variants = syn::parse2::<syn::ItemEnum>(enum_).unwrap().variants;
-        let mut context = CodegenContext::default();
-
+        let mock_context = MockCodegenContext::default();
+        let mut context = mock_context.context();
         let variantsset = VariantsSet::from_variants(&mut context, variants.iter()).unwrap();
 
         let expected_variants = [

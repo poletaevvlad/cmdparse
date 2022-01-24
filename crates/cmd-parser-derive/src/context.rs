@@ -22,14 +22,23 @@ pub(crate) enum ContextType {
     Concrete(Box<syn::Type>),
 }
 
-#[derive(Default)]
 pub(crate) struct CodegenContext<'a> {
+    pub(crate) type_name: &'a syn::Ident,
     pub(crate) context_type: Option<ContextType>,
-    pub(crate) generics: syn::Generics,
+    pub(crate) generics: &'a syn::Generics,
     pub(crate) parsers: LinkedHashMap<Parser<'a>, ParserIndex>,
 }
 
 impl<'a> CodegenContext<'a> {
+    pub(crate) fn from_derive_input(derive_input: &'a syn::DeriveInput) -> Self {
+        CodegenContext {
+            type_name: &derive_input.ident,
+            context_type: None,
+            generics: &derive_input.generics,
+            parsers: LinkedHashMap::new(),
+        }
+    }
+
     pub(crate) fn push_parser(&mut self, parser: Parser<'a>) -> ParserIndex {
         let items_count = self.parsers.len();
         *self
@@ -40,5 +49,33 @@ impl<'a> CodegenContext<'a> {
 
     pub(crate) fn ctx_requires_clone(&self) -> bool {
         self.parsers.len() > 1
+    }
+}
+
+#[cfg(test)]
+pub(crate) struct MockCodegenContext {
+    type_name: syn::Ident,
+    generics: syn::Generics,
+}
+
+#[cfg(test)]
+impl Default for MockCodegenContext {
+    fn default() -> Self {
+        Self {
+            type_name: format_ident!("MockType"),
+            generics: syn::Generics::default(),
+        }
+    }
+}
+
+#[cfg(test)]
+impl MockCodegenContext {
+    pub(crate) fn context(&self) -> CodegenContext<'_> {
+        CodegenContext {
+            type_name: &self.type_name,
+            context_type: None,
+            generics: &self.generics,
+            parsers: LinkedHashMap::new(),
+        }
     }
 }

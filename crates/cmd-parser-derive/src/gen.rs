@@ -184,7 +184,7 @@ pub(crate) fn implementation(
 
 #[cfg(test)]
 mod tests {
-    use crate::context::{CodegenContext, ContextType, Parser};
+    use crate::context::{ContextType, MockCodegenContext, Parser};
     use proc_macro2::TokenStream;
     use quote::quote;
 
@@ -200,7 +200,8 @@ mod tests {
 
         #[test]
         fn empty() {
-            let ctx = CodegenContext::default();
+            let mock_context = MockCodegenContext::default();
+            let ctx = mock_context.context();
 
             let defintion = definition(&ctx);
             let definition_expected = quote! {};
@@ -215,7 +216,9 @@ mod tests {
         fn with_parsers() {
             let ty: syn::Type = syn::parse2(quote! {u8}).unwrap();
 
-            let mut ctx = CodegenContext::default();
+            let mock_context = MockCodegenContext::default();
+            let mut ctx = mock_context.context();
+
             ctx.push_parser(Parser::Explicit(
                 syn::parse2(quote! {super::Parser}).unwrap(),
             ));
@@ -240,12 +243,11 @@ mod tests {
         fn with_parsers_and_concrete_generics() {
             let ty: syn::Type = syn::parse2(quote! {u8}).unwrap();
 
-            let mut ctx = CodegenContext {
-                context_type: Some(ContextType::Concrete(
-                    syn::parse2(quote! {CustomCtx}).unwrap(),
-                )),
-                ..Default::default()
-            };
+            let mock_context = MockCodegenContext::default();
+            let mut ctx = mock_context.context();
+            ctx.context_type = Some(ContextType::Concrete(
+                syn::parse2(quote! {CustomCtx}).unwrap(),
+            ));
             ctx.push_parser(Parser::Explicit(
                 syn::parse2(quote! {super::Parser}).unwrap(),
             ));
@@ -271,19 +273,17 @@ mod tests {
         use super::super::generics::{definition, usage};
         use super::*;
 
-        fn make_context_with_generic() -> CodegenContext<'static> {
-            CodegenContext {
-                generics: syn::parse2(
-                    quote! {<'a, 'b: 'a, T: Iterator<Item = u8>, const X: u8 = 5>},
-                )
-                .unwrap(),
-                ..Default::default()
-            }
+        fn make_generics() -> syn::Generics {
+            syn::parse2(quote! {<'a, 'b: 'a, T: Iterator<Item = u8>, const X: u8 = 5>}).unwrap()
         }
 
         #[test]
         fn null_context_type() {
-            let ctx = make_context_with_generic();
+            let mock_context = MockCodegenContext::default();
+            let generics = make_generics();
+            let mut ctx = mock_context.context();
+            ctx.generics = &generics;
+
             assert_tokens_eq(usage(&ctx, false), quote! {<'a, 'b, T, X>});
             assert_tokens_eq(usage(&ctx, true), quote! {<'a, 'b, CmdParserCtx, T, X>});
 
@@ -299,7 +299,9 @@ mod tests {
 
         #[test]
         fn null_context_type_no_generics() {
-            let ctx = CodegenContext::default();
+            let mock_context = MockCodegenContext::default();
+            let ctx = mock_context.context();
+
             assert_tokens_eq(usage(&ctx, false), quote! {});
             assert_tokens_eq(usage(&ctx, true), quote! {<CmdParserCtx>});
 
@@ -309,8 +311,12 @@ mod tests {
 
         #[test]
         fn concrete_context() {
-            let mut ctx = make_context_with_generic();
+            let mock_context = MockCodegenContext::default();
+            let generics = make_generics();
+            let mut ctx = mock_context.context();
+            ctx.generics = &generics;
             ctx.context_type = Some(ContextType::Concrete(syn::parse2(quote! {u8}).unwrap()));
+
             assert_tokens_eq(usage(&ctx, false), quote! {<'a, 'b, T, X>});
             assert_tokens_eq(usage(&ctx, true), quote! {<'a, 'b, T, X>});
 
@@ -326,10 +332,10 @@ mod tests {
 
         #[test]
         fn concrete_context_no_generics() {
-            let ctx = CodegenContext {
-                context_type: Some(ContextType::Concrete(syn::parse2(quote! {u8}).unwrap())),
-                ..Default::default()
-            };
+            let mock_context = MockCodegenContext::default();
+            let mut ctx = mock_context.context();
+            ctx.context_type = Some(ContextType::Concrete(syn::parse2(quote! {u8}).unwrap()));
+
             assert_tokens_eq(usage(&ctx, false), quote! {});
             assert_tokens_eq(usage(&ctx, true), quote! {});
 
@@ -339,7 +345,10 @@ mod tests {
 
         #[test]
         fn generic_context() {
-            let mut ctx = make_context_with_generic();
+            let mock_context = MockCodegenContext::default();
+            let generics = make_generics();
+            let mut ctx = mock_context.context();
+            ctx.generics = &generics;
             ctx.context_type = Some(ContextType::Generic(Box::new(
                 syn::parse2::<syn::TypeParam>(quote! {T: Send + Sync})
                     .unwrap()
@@ -361,14 +370,13 @@ mod tests {
 
         #[test]
         fn generic_context_no_generics() {
-            let ctx = CodegenContext {
-                context_type: Some(ContextType::Generic(Box::new(
-                    syn::parse2::<syn::TypeParam>(quote! {T: Send + Sync})
-                        .unwrap()
-                        .bounds,
-                ))),
-                ..Default::default()
-            };
+            let mock_context = MockCodegenContext::default();
+            let mut ctx = mock_context.context();
+            ctx.context_type = Some(ContextType::Generic(Box::new(
+                syn::parse2::<syn::TypeParam>(quote! {T: Send + Sync})
+                    .unwrap()
+                    .bounds,
+            )));
 
             assert_tokens_eq(usage(&ctx, false), quote! {});
             assert_tokens_eq(usage(&ctx, true), quote! {<CmdParserCtx>});
@@ -385,7 +393,8 @@ mod tests {
 
         #[test]
         fn no_parsers() {
-            let ctx = CodegenContext::default();
+            let mock_context = MockCodegenContext::default();
+            let ctx = mock_context.context();
             let result = implementation(
                 &format_ident!("NoFields"),
                 &ctx,
@@ -419,12 +428,11 @@ mod tests {
         fn parsers_concrete_ctx() {
             let ty: syn::Type = syn::parse2(quote! {u8}).unwrap();
 
-            let mut ctx = CodegenContext {
-                context_type: Some(ContextType::Concrete(
-                    syn::parse2(quote! {CustomCtx}).unwrap(),
-                )),
-                ..Default::default()
-            };
+            let mock_context = MockCodegenContext::default();
+            let mut ctx = mock_context.context();
+            ctx.context_type = Some(ContextType::Concrete(
+                syn::parse2(quote! {CustomCtx}).unwrap(),
+            ));
             ctx.push_parser(Parser::Explicit(
                 syn::parse2(quote! {super::Parser}).unwrap(),
             ));
@@ -466,15 +474,15 @@ mod tests {
 
         #[test]
         fn with_generics() {
-            let mut ctx = CodegenContext {
-                context_type: Some(ContextType::Generic(Box::new(
-                    syn::parse2::<syn::TypeParam>(quote! {T: Send + Sync})
-                        .unwrap()
-                        .bounds,
-                ))),
-                generics: syn::parse2(quote! {<'a, T: Parsable<CmdParserCtx>>}).unwrap(),
-                ..Default::default()
-            };
+            let mock_context = MockCodegenContext::default();
+            let generics = syn::parse2(quote! {<'a, T: Parsable<CmdParserCtx>>}).unwrap();
+            let mut ctx = mock_context.context();
+            ctx.context_type = Some(ContextType::Generic(Box::new(
+                syn::parse2::<syn::TypeParam>(quote! {T: Send + Sync})
+                    .unwrap()
+                    .bounds,
+            )));
+            ctx.generics = &generics;
             ctx.push_parser(Parser::Explicit(
                 syn::parse2(quote! {super::ParserA<'a, T>}).unwrap(),
             ));
