@@ -43,7 +43,7 @@ pub enum CompletionResult<'a> {
 }
 
 impl<'a> CompletionResult<'a> {
-    pub(crate) const fn empty() -> Self {
+    pub const fn empty() -> Self {
         CompletionResult::Suggestions(Vec::new())
     }
 }

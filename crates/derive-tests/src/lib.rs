@@ -1,6 +1,6 @@
 #![cfg(test)]
 
-use cmd_parser::{Parsable, ParseError, ParseResult, Parser};
+use cmd_parser::{CompletionResult, Parsable, ParseError, ParseResult, Parser};
 
 macro_rules! test_success {
     ($name:ident, $input:expr => ($value:expr, $remaining:expr)) => {
@@ -54,6 +54,39 @@ macro_rules! test_unrecognized_variant {
     };
 }
 
+macro_rules! test_complete {
+    ($name:ident, $input:expr => [$($suggestion:literal),*]) => {
+        #[test]
+        fn $name() {
+            let parser = TestParsable::new_parser(());
+            assert_eq!(
+                Parser::<()>::complete(&parser, $input),
+                CompletionResult::Suggestions(vec![$($suggestion.into()),*])
+            );
+        }
+    };
+    ($name:ident, $input:expr => Unrecognized) => {
+        #[test]
+        fn $name() {
+            let parser = TestParsable::new_parser(());
+            assert_eq!(
+                Parser::<()>::complete(&parser, $input),
+                CompletionResult::Unrecognized
+            )
+        }
+    };
+    ($name:ident, $input:expr => Consumed($consumed:literal)) => {
+        #[test]
+        fn $name() {
+            let parser = TestParsable::new_parser(());
+            assert_eq!(
+                Parser::<()>::complete(&parser, $input),
+                CompletionResult::Consumed($consumed)
+            )
+        }
+    }
+}
+
 mod unit_struct {
     use super::*;
 
@@ -63,6 +96,9 @@ mod unit_struct {
     test_success!(empty, "" => (TestParsable, ""));
     test_success!(followed_by_token, "remaining" => (TestParsable, "remaining"));
     test_success!(followed_by_attr, "--remaining" => (TestParsable, "--remaining"));
+    test_complete!(complete_empty, "" => Consumed(""));
+    test_complete!(complete_followed_by_token, "remaining" => Consumed("remaining"));
+    test_complete!(complete_followed_by_attr, "--remaining" => Consumed("--remaining"));
 }
 
 mod newtype_struct {
@@ -75,6 +111,8 @@ mod newtype_struct {
     test_failed!(parse_error, "abc" => ParseError::token_parse("abc".into(), None, "integer"));
     test_success!(success, "15 abc" => (TestParsable(15), "abc"));
     test_unrecognized_attr!(unrecognized_attr, "--attr 15 abc" => ("attr", "15 abc"));
+    test_complete!(complere_empty_if_not_terminated, "abc" => []);
+    test_complete!(complete_consumes_if_followed_by_ws, "15 abc" => Consumed("abc"));
 }
 
 mod multiple_args {
@@ -87,9 +125,13 @@ mod multiple_args {
     }
 
     test_success!(success, "1 2 3" => (TestParsable{ a: 1, b: 2.0 }, "3"));
+    test_complete!(complete_consumes, "1 2 3" => Consumed("3"));
     test_unrecognized_attr!(unrecognized_attr, "--attr 1 2 3" => ("attr", "1 2 3"));
+    test_complete!(complete_unrecognized_attr, "--attr 1 2 3" => Unrecognized);
     test_failed!(attr_between_fields, "1 --attr 2 3" => ParseError::unknown_attribute("attr"));
+    test_complete!(complete_attr_between_fields, "1 --attr 2 3" => []);
     test_success!(attr_after_fields, "1 2 --attr 3" => (TestParsable{ a: 1, b: 2.0 }, "--attr 3"));
+    test_complete!(complete_attr_after_fields, "1 2 --attr 3" => Consumed("--attr 3"));
 }
 
 mod custom_ctx {
@@ -205,6 +247,10 @@ mod some_optional {
     test_success!(stops_after_required_finished, "10 --unknown --yes rest" => (TestParsable(10, 5, false), "--unknown --yes rest"));
     test_success!(keeps_taking_tokens, "10 --yes --unknown rest" => (TestParsable(10, 5, true), "--unknown rest"));
     test_unrecognized_attr!(unrecognized_attr, "--unknown 10" => ("unknown", "10"));
+
+    test_complete!(complete_attr_dashes_only, "--" => ["false", "opt", "yes"]);
+    test_complete!(complete_attr_partial, "--y" => ["es"]);
+    test_complete!(complete_attr_unknown, "--l" => Unrecognized);
 }
 
 mod all_optional {
@@ -226,6 +272,7 @@ mod all_optional {
     test_success!(two_specified, "--a 10 --b 20 abc" => (TestParsable{ a: 10, b: 20, c: 0 }, "abc"));
     test_success!(all_specified, "--a 10 --b 20 --c 30 abc" => (TestParsable{ a: 10, b: 20, c: 30 }, "abc"));
     test_success!(stop_on_unknown_attr, "--a 10 --unknown --a 10" => (TestParsable{ a: 10, b: 0, c: 0 }, "--unknown --a 10"));
+    test_complete!(complete_stop_on_unknown_attr, "--a 10 --unknown --a 10" => Consumed("--unknown --a 10"));
 }
 
 mod some_default {

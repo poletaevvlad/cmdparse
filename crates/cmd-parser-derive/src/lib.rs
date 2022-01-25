@@ -9,7 +9,7 @@ mod variants_gen;
 use attributes::{BuildableAttributes, TypeAttributes};
 use context::CodegenContext;
 use fields::FieldsSet;
-use fields_gen::gen_parse_struct;
+use fields_gen::{gen_complete_struct, gen_parse_struct};
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
@@ -23,7 +23,8 @@ fn derive_struct<'a>(ctx: &mut CodegenContext<'a>, data: &'a syn::DataStruct) ->
     let fieldset = FieldsSet::from_fields(ctx, &data.fields)?;
     let name = ctx.type_name;
     let parse_tokens = gen_parse_struct(quote! { #name }, ctx, &fieldset);
-    Ok((parse_tokens, quote! {todo!()}))
+    let complete_tokens = gen_complete_struct(ctx, &fieldset);
+    Ok((parse_tokens, complete_tokens))
 }
 
 fn derive_enum<'a>(ctx: &mut CodegenContext<'a>, data: &'a syn::DataEnum) -> DeriveResult {

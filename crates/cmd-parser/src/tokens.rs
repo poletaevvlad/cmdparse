@@ -23,7 +23,7 @@ pub enum Token<'a> {
     Attribute(Cow<'a, str>),
 }
 
-fn take_string(mut input: &str) -> (Cow<'_, str>, &str) {
+pub fn take_string(mut input: &str) -> (Cow<'_, str>, &str) {
     if input.starts_with(')') || input.starts_with('#') {
         return ("".into(), input);
     }
@@ -121,6 +121,17 @@ pub fn skip_token_no_ws(mut input: &str) -> &str {
     }
 }
 
+pub fn complete_variants<'a>(token: &str, variants: &[&'a str]) -> Vec<Cow<'a, str>> {
+    let index = variants.binary_search(&token).unwrap_or_else(|idx| idx);
+    variants[index..]
+        .iter()
+        .map(|variant| variant.strip_prefix(token))
+        .take_while(Option::is_some)
+        .map(|suggestion| Cow::Borrowed(suggestion.unwrap())) // Iterator::take_while is unstable, unwrap is safe, Nones are filtered out
+        .filter(|suggestion| !suggestion.is_empty())
+        .collect()
+}
+
 /// Computes suggestions from a list of string slices. The list **must** be sorted.
 pub fn complete_enum<'a>(input: &'a str, variants: &[&'static str]) -> CompletionResult<'a> {
     let (token, remaining) = take_token_no_ws(input);
@@ -130,16 +141,7 @@ pub fn complete_enum<'a>(input: &'a str, variants: &[&'static str]) -> Completio
 
     match token {
         Token::Text(token) if !token.is_empty() => {
-            let index = variants
-                .binary_search(&token.as_ref())
-                .unwrap_or_else(|idx| idx);
-            let suggestions = variants[index..]
-                .iter()
-                .map(|variant| variant.strip_prefix(token.as_ref()))
-                .take_while(Option::is_some)
-                .map(|suggestion| Cow::Borrowed(suggestion.unwrap())) // Iterator::take_while is unstable, unwrap is safe, Nones are filtered out
-                .filter(|suggestion| !suggestion.is_empty())
-                .collect();
+            let suggestions = complete_variants(token.as_ref(), variants);
             CompletionResult::Suggestions(suggestions)
         }
         _ => CompletionResult::empty(),
