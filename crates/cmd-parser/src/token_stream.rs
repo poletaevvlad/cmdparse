@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 pub struct TokenStream<'a> {
     remaining: &'a str,
     next_token: Option<Token<'a>>,
@@ -50,6 +52,40 @@ impl<'a> TokenStream<'a> {
 pub struct Token<'a> {
     text: &'a str,
     is_last: bool,
+}
+
+impl<'a> Token<'a> {
+    pub fn as_string(&self) -> Cow<'a, str> {
+        if self.text.starts_with('\'') || self.text.starts_with('"') {
+            let mut string = String::new();
+            let mut escaped = false;
+            for ch in self.text[1..self.text.len() - 1].chars() {
+                match ch {
+                    ch if escaped => {
+                        string.push(ch);
+                        escaped = false;
+                    }
+                    '\\' => escaped = true,
+                    ch => string.push(ch),
+                }
+            }
+            Cow::Owned(string)
+        } else {
+            Cow::Borrowed(self.text)
+        }
+    }
+
+    pub fn is_opening_paren(&self) -> bool {
+        self.text == "("
+    }
+
+    pub fn is_closing_paren(&self) -> bool {
+        self.text == ")"
+    }
+
+    pub fn is_last(&self) -> bool {
+        self.is_last
+    }
 }
 
 fn skip_ws(mut input: &str) -> &str {
@@ -164,5 +200,32 @@ mod tests {
         test_tokenization!(with_quotes, r#""\"\'" '\"\''"# => [
             token!(r#""\"\'""#), token!(r#"'\"\''"#, last)
         ]);
+    }
+
+    mod token {
+        use super::*;
+
+        #[test]
+        fn is_paren() {
+            assert!(token!("(").is_opening_paren());
+            assert!(!token!("(").is_closing_paren());
+
+            assert!(!token!(")").is_opening_paren());
+            assert!(token!(")").is_closing_paren());
+
+            assert!(!token!("abc").is_opening_paren());
+            assert!(!token!("abc").is_closing_paren());
+        }
+
+        #[test]
+        fn to_string_normal() {
+            assert_eq!(&token!("abc").as_string(), "abc");
+        }
+
+        #[test]
+        fn to_string_quoted() {
+            assert_eq!(&token!(r#"'\'\\\"'"#).as_string(), r#"'\""#);
+            assert_eq!(&token!(r#""\'\\\"""#).as_string(), r#"'\""#);
+        }
     }
 }
