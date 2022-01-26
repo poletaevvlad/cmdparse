@@ -1,6 +1,7 @@
 mod error;
 pub mod primitives;
 pub mod sequences;
+mod token_stream;
 pub mod tokens;
 
 pub use cmd_parser_derive::Parsable;
