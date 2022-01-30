@@ -12,26 +12,11 @@ use std::str::FromStr;
 fn complete_token_single(input: TokenStream<'_>) -> CompletionResult<'_> {
     match input.take() {
         Some(Ok((token, remaining))) => match token.value() {
-            TokenValue::Text(_) => CompletionResult {
-                remaining: if token.is_last() {
-                    None
-                } else {
-                    Some(remaining)
-                },
-                value_consumed: true,
-                suggestions: HashSet::new(),
-            },
-            TokenValue::Attribute(_) => CompletionResult {
-                remaining: Some(input),
-                value_consumed: false,
-                suggestions: HashSet::new(),
-            },
+            TokenValue::Text(_) if token.is_last() => CompletionResult::complete(HashSet::new()),
+            TokenValue::Text(_) => CompletionResult::consumed(remaining),
+            TokenValue::Attribute(_) => CompletionResult::unrecognized(input),
         },
-        Some(Err(_)) | None => CompletionResult {
-            remaining: None,
-            value_consumed: false,
-            suggestions: HashSet::new(),
-        },
+        Some(Err(_)) | None => CompletionResult::failed(),
     }
 }
 
@@ -211,30 +196,16 @@ impl<Ctx> Parser<Ctx> for BooleanParser {
             Some(Ok((token, remaining))) => match token.value() {
                 TokenValue::Text(text) if token.is_last() => {
                     let text = text.parse_string();
-                    CompletionResult {
-                        remaining: None,
-                        value_consumed: true,
-                        suggestions: complete_variants(&text, &["false", "no", "true", "yes"])
+                    CompletionResult::complete(
+                        complete_variants(&text, &["false", "no", "true", "yes"])
                             .map(Cow::Borrowed)
                             .collect(),
-                    }
+                    )
                 }
-                TokenValue::Text(_) => CompletionResult {
-                    remaining: Some(remaining),
-                    value_consumed: true,
-                    suggestions: HashSet::new(),
-                },
-                TokenValue::Attribute(_) => CompletionResult {
-                    remaining: Some(input),
-                    value_consumed: false,
-                    suggestions: HashSet::new(),
-                },
+                TokenValue::Text(_) => CompletionResult::consumed(remaining),
+                TokenValue::Attribute(_) => CompletionResult::unrecognized(input),
             },
-            Some(Err(_)) | None => CompletionResult {
-                remaining: None,
-                value_consumed: false,
-                suggestions: HashSet::new(),
-            },
+            Some(Err(_)) | None => CompletionResult::failed(),
         }
     }
 }

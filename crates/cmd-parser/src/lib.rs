@@ -22,6 +22,40 @@ pub struct CompletionResult<'a> {
     suggestions: Suggestions,
 }
 
+impl<'a> CompletionResult<'a> {
+    fn unrecognized(previous: TokenStream<'a>) -> Self {
+        CompletionResult {
+            remaining: Some(previous),
+            value_consumed: false,
+            suggestions: HashSet::new(),
+        }
+    }
+
+    fn consumed(remaining: TokenStream<'a>) -> Self {
+        CompletionResult {
+            remaining: Some(remaining),
+            value_consumed: true,
+            suggestions: HashSet::new(),
+        }
+    }
+
+    fn complete(suggestions: HashSet<Cow<'static, str>>) -> Self {
+        CompletionResult {
+            remaining: None,
+            value_consumed: true,
+            suggestions,
+        }
+    }
+
+    fn failed() -> Self {
+        CompletionResult {
+            remaining: None,
+            value_consumed: false,
+            suggestions: HashSet::new(),
+        }
+    }
+}
+
 pub trait Parser<Ctx> {
     type Value;
 
