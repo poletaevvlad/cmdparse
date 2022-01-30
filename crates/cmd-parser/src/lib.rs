@@ -2,6 +2,7 @@ mod error;
 pub mod primitives;
 // pub mod sequences;
 pub mod tokens;
+pub mod utils;
 
 use std::borrow::Cow;
 use std::collections::HashSet;

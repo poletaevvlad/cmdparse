@@ -63,14 +63,16 @@ fn take_lexeme_kind(input: &str) -> (Option<LexemeKind<'_>>, &str) {
             }
             remaining = chars.as_str();
         }
-        Some(_) => {
-            while let Some(ch) = chars.next() {
-                if ch.is_whitespace() || ch == '"' || ch == '\'' || ch == ')' || ch == '#' {
-                    break;
-                }
-                remaining = chars.as_str();
+        Some(mut ch) => loop {
+            if ch.is_whitespace() || ch == '"' || ch == '\'' || ch == ')' || ch == '#' {
+                break;
             }
-        }
+            remaining = chars.as_str();
+            ch = match chars.next() {
+                Some(ch) => ch,
+                None => break,
+            }
+        },
         None => (),
     }
 
@@ -142,6 +144,15 @@ mod tests {
 
         assert_eq!(take_lexeme("abcdef  "), (Some(lexeme!("abcdef")), ""));
         assert_eq!(take_lexeme("--abcdef  "), (Some(lexeme!(--"abcdef")), ""));
+    }
+
+    #[test]
+    fn takes_single_char() {
+        assert_eq!(take_lexeme("a"), (Some(lexeme!("a", last)), ""));
+        assert_eq!(take_lexeme("--a"), (Some(lexeme!(--"a", last)), ""));
+
+        assert_eq!(take_lexeme("a "), (Some(lexeme!("a")), ""));
+        assert_eq!(take_lexeme("--a "), (Some(lexeme!(--"a")), ""));
     }
 
     #[test]

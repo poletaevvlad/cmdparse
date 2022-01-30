@@ -1,12 +1,12 @@
+use super::{CompletionResult, Parsable, ParseResult, Parser};
 use crate::error::{ParseError, UnrecognizedToken};
 use crate::tokens::{TokenStream, TokenValue};
-
-use super::{CompletionResult, Parsable, ParseResult, Parser};
-use std::borrow::Cow;
+use crate::utils::complete_variants;
+use std::borrow::{Borrow, Cow};
 use std::collections::HashSet;
 use std::fmt;
 use std::marker::PhantomData;
-use std::num::{IntErrorKind, ParseIntError};
+use std::num::{IntErrorKind, ParseFloatError, ParseIntError};
 use std::str::FromStr;
 
 fn complete_token_single(input: TokenStream<'_>) -> CompletionResult<'_> {
@@ -117,124 +117,156 @@ where
     }
 }
 
-// no_state_parser!(RealParser);
-// no_state_parsable!(f32, RealParser);
-// no_state_parsable!(f64, RealParser);
+no_state_parser!(RealParser);
+no_state_parsable!(f32, RealParser);
+no_state_parsable!(f64, RealParser);
 
-// impl<T, Ctx> Parser<Ctx> for RealParser<T>
-// where
-//     T: FromStr<Err = ParseFloatError>,
-// {
-//     type Value = T;
+impl<T, Ctx> Parser<Ctx> for RealParser<T>
+where
+    T: FromStr<Err = ParseFloatError>,
+{
+    type Value = T;
 
-//     fn create(_ctx: Ctx) -> Self {
-//         Self::default()
-//     }
+    fn create(_ctx: Ctx) -> Self {
+        Self::default()
+    }
 
-//     fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
-//         let (token, remaining) = take_token(input);
-//         match token {
-//             Token::Attribute(attribute) => ParseResult::UnrecognizedAttribute(attribute, remaining),
-//             Token::Text(token) if token.is_empty() => {
-//                 ParseResult::Failed(ParseError::token_required("real number"))
-//             }
-//             Token::Text(token) => match token.parse() {
-//                 Ok(value) => ParseResult::Parsed(value, remaining),
-//                 Err(_) => ParseResult::Failed(ParseError::token_parse(token, None, "real number")),
-//             },
-//         }
-//     }
+    fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
+        match input.take().transpose()? {
+            Some((token, remaining)) => match token.value() {
+                TokenValue::Text(text) => match text.parse_string().parse() {
+                    Ok(value) => Ok((value, remaining)),
+                    Err(_) => Err(ParseError::invalid(token, None)
+                        .expected("real number")
+                        .into()),
+                },
+                TokenValue::Attribute(_) => Err(UnrecognizedToken::new(token, remaining).into()),
+            },
+            None => Err(ParseError::token_required().expected("real number").into()),
+        }
+    }
 
-//     fn complete<'a>(&self, input: &'a str) -> CompletionResult<'a> {
-//         complete_token_single(input)
-//     }
-// }
+    fn complete<'a>(&self, input: TokenStream<'a>) -> CompletionResult<'a> {
+        complete_token_single(input)
+    }
+}
 
-// #[derive(Debug, Default)]
-// pub struct StringParser;
+#[derive(Debug, Default)]
+pub struct StringParser;
 
-// impl<Ctx> Parser<Ctx> for StringParser {
-//     type Value = String;
+impl<Ctx> Parser<Ctx> for StringParser {
+    type Value = String;
 
-//     fn create(_ctx: Ctx) -> Self {
-//         StringParser
-//     }
+    fn create(_ctx: Ctx) -> Self {
+        StringParser
+    }
 
-//     fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
-//         let (token, remaining) = take_token(input);
-//         match token {
-//             Token::Attribute(attribute) => ParseResult::UnrecognizedAttribute(attribute, remaining),
-//             Token::Text(token) if token.is_empty() => {
-//                 ParseResult::Failed(ParseError::token_required("string"))
-//             }
-//             Token::Text(token) => ParseResult::Parsed(token.into_owned(), remaining),
-//         }
-//     }
+    fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
+        match input.take().transpose()? {
+            Some((token, remaining)) => match token.value() {
+                TokenValue::Text(text) => {
+                    Ok((ToString::to_string(&text.parse_string()), remaining))
+                }
+                TokenValue::Attribute(_) => Err(UnrecognizedToken::new(token, remaining).into()),
+            },
+            None => Err(ParseError::token_required().expected("string").into()),
+        }
+    }
 
-//     fn complete<'a>(&self, input: &'a str) -> CompletionResult<'a> {
-//         complete_token_single(input)
-//     }
-// }
+    fn complete<'a>(&self, input: TokenStream<'a>) -> CompletionResult<'a> {
+        complete_token_single(input)
+    }
+}
 
-// impl<Ctx> Parsable<Ctx> for String {
-//     type Parser = StringParser;
-// }
+impl<Ctx> Parsable<Ctx> for String {
+    type Parser = StringParser;
+}
 
-// #[derive(Debug, Default)]
-// pub struct BooleanParser;
+#[derive(Debug, Default)]
+pub struct BooleanParser;
 
-// impl<Ctx> Parser<Ctx> for BooleanParser {
-//     type Value = bool;
+impl<Ctx> Parser<Ctx> for BooleanParser {
+    type Value = bool;
 
-//     fn create(_ctx: Ctx) -> Self {
-//         BooleanParser
-//     }
+    fn create(_ctx: Ctx) -> Self {
+        BooleanParser
+    }
 
-//     fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
-//         let (token, remaining) = take_token(input);
-//         match token {
-//             Token::Attribute(attribute) => ParseResult::UnrecognizedAttribute(attribute, remaining),
-//             Token::Text(token) if token.is_empty() => {
-//                 ParseResult::Failed(ParseError::token_required("boolean"))
-//             }
-//             Token::Text(token) => match token.borrow() {
-//                 "true" | "t" | "yes" | "y" => ParseResult::Parsed(true, remaining),
-//                 "false" | "f" | "no" | "n" => ParseResult::Parsed(false, remaining),
-//                 _ => ParseResult::Failed(ParseError::token_parse(token, None, "boolean")),
-//             },
-//         }
-//     }
+    fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
+        match input.take().transpose()? {
+            Some((token, remaining)) => match token.value() {
+                TokenValue::Text(text) => match text.parse_string().borrow() {
+                    "true" | "t" | "yes" | "y" => Ok((true, remaining)),
+                    "false" | "f" | "no" | "n" => Ok((false, remaining)),
+                    _ => Err(ParseError::invalid(token, None).expected("boolean").into()),
+                },
+                TokenValue::Attribute(_) => Err(UnrecognizedToken::new(token, remaining).into()),
+            },
+            None => Err(ParseError::token_required().expected("boolean").into()),
+        }
+    }
 
-//     fn complete<'a>(&self, input: &'a str) -> CompletionResult<'a> {
-//         complete_enum(input, &["false", "no", "true", "yes"])
-//     }
-// }
+    fn complete<'a>(&self, input: TokenStream<'a>) -> CompletionResult<'a> {
+        match input.take() {
+            Some(Ok((token, remaining))) => match token.value() {
+                TokenValue::Text(text) if token.is_last() => {
+                    let text = text.parse_string();
+                    CompletionResult {
+                        remaining: None,
+                        value_consumed: true,
+                        suggestions: complete_variants(&text, &["false", "no", "true", "yes"])
+                            .map(Cow::Borrowed)
+                            .collect(),
+                    }
+                }
+                TokenValue::Text(_) => CompletionResult {
+                    remaining: Some(remaining),
+                    value_consumed: true,
+                    suggestions: HashSet::new(),
+                },
+                TokenValue::Attribute(_) => CompletionResult {
+                    remaining: Some(input),
+                    value_consumed: false,
+                    suggestions: HashSet::new(),
+                },
+            },
+            Some(Err(_)) | None => CompletionResult {
+                remaining: None,
+                value_consumed: false,
+                suggestions: HashSet::new(),
+            },
+        }
+    }
+}
 
-// impl<Ctx> Parsable<Ctx> for bool {
-//     type Parser = BooleanParser;
-// }
+impl<Ctx> Parsable<Ctx> for bool {
+    type Parser = BooleanParser;
+}
 
 #[cfg(test)]
 mod tests {
-    use super::IntegerParser;
-    use crate::error::ParseFailure;
+    use super::{IntegerParser, RealParser};
+    use crate::error::{ParseError, ParseFailure};
+    use crate::primitives::BooleanParser;
     use crate::tokens::{token_macro::token, TokenStream};
     use crate::{Parsable, Parser};
+    use std::{borrow::Cow, collections::HashSet};
 
     macro_rules! test_parse {
         ($name:ident, $type:ty, $text:literal => Ok($value:expr)) => {
             #[test]
+            #[allow(clippy::bool_assert_comparison)]
             fn $name() {
                 let parser = <$type as Parsable<()>>::new_parser(());
 
-                let stream = TokenStream::from_str($text);
+                let stream = TokenStream::new($text);
                 let (result, remaining) = Parser::<()>::parse(&parser, stream).unwrap();
                 assert_eq!(result, $value);
                 assert!(remaining.peek().is_none());
 
                 let mut input = $text.to_string();
                 input.push_str(" abc");
-                let stream = TokenStream::from_str(&input);
+                let stream = TokenStream::new(&input);
                 let (result, remaining) = Parser::<()>::parse(&parser, stream).unwrap();
                 assert_eq!(result, $value);
                 assert_eq!(remaining.peek().unwrap().unwrap(), token!("abc", last));
@@ -244,7 +276,7 @@ mod tests {
             #[test]
             fn $name() {
                 let parser = <$type as Parsable<()>>::new_parser(());
-                let stream = TokenStream::from_str($text);
+                let stream = TokenStream::new($text);
                 let failure = Parser::<()>::parse(&parser, stream).unwrap_err();
                 match failure {
                     ParseFailure::Error(error) => assert_eq!(error, $err),
@@ -259,7 +291,7 @@ mod tests {
             #[test]
             fn $name() {
                 let parser = <$type as Parsable<()>>::new_parser(());
-                let stream = TokenStream::from_str("--unrecognized abc");
+                let stream = TokenStream::new("--unrecognized abc");
                 let failure = Parser::<()>::parse(&parser, stream).unwrap_err();
                 match failure {
                     ParseFailure::Error(_) => panic!("expected Unrecognized, got {:?}", failure),
@@ -277,7 +309,6 @@ mod tests {
 
     mod integer_parser {
         use super::*;
-        use crate::error::ParseError;
 
         #[test]
         fn debug() {
@@ -337,176 +368,107 @@ mod tests {
         }
     }
 
-    // mod real_parser {
-    //     use super::*;
+    mod real_parser {
+        use super::*;
 
-    //     #[test]
-    //     fn debug() {
-    //         assert_eq!(&format!("{:?}", RealParser::<f64>::default()), "RealParser");
-    //     }
+        #[test]
+        fn debug() {
+            assert_eq!(&format!("{:?}", RealParser::<f64>::default()), "RealParser");
+        }
 
-    //     #[test]
-    //     fn parse_f64() {
-    //         let parser = RealParser::create(());
-    //         assert_eq!(
-    //             Parser::<()>::parse(&parser, "3.2 abc"),
-    //             ParseResult::Parsed(3.2, "abc")
-    //         );
-    //     }
+        #[test]
+        fn parse_f64() {
+            let parser = <f64 as Parsable<()>>::new_parser(());
 
-    //     #[test]
-    //     fn parse_error() {
-    //         let parser = RealParser::<f64>::create(());
-    //         assert_eq!(
-    //             Parser::<()>::parse(&parser, "abc"),
-    //             ParseResult::Failed(ParseError::token_parse("abc".into(), None, "real number"))
-    //         );
-    //     }
+            let stream = TokenStream::new("3.2");
+            let (result, remaining) = Parser::<()>::parse(&parser, stream).unwrap();
+            assert!((result - 3.2).abs() < f64::EPSILON);
+            assert!(remaining.peek().is_none());
 
-    //     #[test]
-    //     fn parse_unknown_attribure() {
-    //         let parser = RealParser::<f64>::create(());
-    //         assert_eq!(
-    //             Parser::<()>::parse(&parser, "--unknown abc"),
-    //             ParseResult::UnrecognizedAttribute("unknown".into(), "abc")
-    //         );
-    //     }
+            let stream = TokenStream::new("3.2 abc");
+            let (result, remaining) = Parser::<()>::parse(&parser, stream).unwrap();
+            assert!((result - 3.2).abs() < f64::EPSILON);
+            assert_eq!(remaining.peek().unwrap().unwrap(), token!("abc", last));
+        }
 
-    //     #[test]
-    //     fn parse_error_empty_string() {
-    //         let parser = RealParser::<f64>::create(());
-    //         assert_eq!(
-    //             Parser::<()>::parse(&parser, ""),
-    //             ParseResult::Failed(ParseError::token_required("real number"))
-    //         );
-    //     }
-    // }
+        test_parse!(parse_error, f64, "abc" => Err(ParseError::invalid(token!("abc", last), None).expected("real number")));
+        test_parse!(parse_empty, f64, "" => Err(ParseError::token_required().expected("real number")));
+        test_unrecognized_attribute!(unrecognized_attr, f32);
+    }
 
-    // mod string_parser {
-    //     use super::*;
+    mod string_parser {
+        use super::*;
 
-    //     #[test]
-    //     fn parse_string() {
-    //         let parser = StringParser::create(());
-    //         assert_eq!(
-    //             Parser::<()>::parse(&parser, "abc def"),
-    //             ParseResult::Parsed("abc".to_string(), "def")
-    //         );
-    //     }
+        test_parse!(parse_string, String, "abc" => Ok("abc".to_string()));
+        test_parse!(parse_empty, String, "" => Err(ParseError::token_required().expected("string")));
+        test_unrecognized_attribute!(unrecognized_attr, String);
+    }
 
-    //     #[test]
-    //     fn parse_empty() {
-    //         let parser = StringParser::create(());
-    //         assert_eq!(
-    //             Parser::<()>::parse(&parser, ""),
-    //             ParseResult::Failed(ParseError::token_required("string")),
-    //         );
-    //     }
+    mod boolean_parser {
+        use super::*;
 
-    //     #[test]
-    //     fn parse_unknown_attribure() {
-    //         let parser = StringParser::create(());
-    //         assert_eq!(
-    //             Parser::<()>::parse(&parser, "--unknown abc"),
-    //             ParseResult::UnrecognizedAttribute("unknown".into(), "abc")
-    //         );
-    //     }
-    // }
+        test_parse!(parse_bool_true, bool, "true" => Ok(true));
+        test_parse!(parse_bool_yes, bool, "yes" => Ok(true));
+        test_parse!(parse_bool_false, bool, "false" => Ok(false));
+        test_parse!(parse_bool_no, bool, "no" => Ok(false));
+        test_unrecognized_attribute!(unrecognized_attr, bool);
+        test_parse!(parse_empty_string, bool, "" => Err(ParseError::token_required().expected("boolean")));
+        test_parse!(parse_invalie, bool, "abc" => Err(ParseError::invalid(token!("abc", last), None).expected("boolean")));
 
-    // mod boolean_parser {
-    //     use super::*;
+        #[test]
+        fn suggest_empty_string() {
+            let parser = BooleanParser::create(());
+            let stream = TokenStream::new("");
+            let result = Parser::<()>::complete(&parser, stream);
+            assert!(!result.value_consumed);
+            assert!(result.suggestions.is_empty());
+            assert!(result.remaining.is_none());
+        }
 
-    //     #[test]
-    //     fn parse_success() {
-    //         let parser = BooleanParser::create(());
-    //         assert_eq!(
-    //             Parser::<()>::parse(&parser, "true 1"),
-    //             ParseResult::Parsed(true, "1")
-    //         );
-    //         assert_eq!(
-    //             Parser::<()>::parse(&parser, "t 1"),
-    //             ParseResult::Parsed(true, "1")
-    //         );
-    //         assert_eq!(
-    //             Parser::<()>::parse(&parser, "yes 1"),
-    //             ParseResult::Parsed(true, "1")
-    //         );
-    //         assert_eq!(
-    //             Parser::<()>::parse(&parser, "y 1"),
-    //             ParseResult::Parsed(true, "1")
-    //         );
-    //         assert_eq!(
-    //             Parser::<()>::parse(&parser, "false 1"),
-    //             ParseResult::Parsed(false, "1")
-    //         );
-    //         assert_eq!(
-    //             Parser::<()>::parse(&parser, "f 1"),
-    //             ParseResult::Parsed(false, "1")
-    //         );
-    //         assert_eq!(
-    //             Parser::<()>::parse(&parser, "no 1"),
-    //             ParseResult::Parsed(false, "1")
-    //         );
-    //         assert_eq!(
-    //             Parser::<()>::parse(&parser, "n 1"),
-    //             ParseResult::Parsed(false, "1")
-    //         );
-    //     }
+        #[test]
+        fn suggest_attribute() {
+            let parser = BooleanParser::create(());
+            let stream = TokenStream::new("--unknown abc");
+            let result = Parser::<()>::complete(&parser, stream);
+            assert!(!result.value_consumed);
+            assert!(result.suggestions.is_empty());
+            assert_eq!(
+                result.remaining.unwrap().peek().unwrap().unwrap(),
+                token!(--"unknown")
+            );
+        }
 
-    //     #[test]
-    //     fn parse_unknown() {
-    //         let parser = BooleanParser::create(());
-    //         assert_eq!(
-    //             Parser::<()>::parse(&parser, "unknown"),
-    //             ParseResult::Failed(ParseError::token_parse("unknown".into(), None, "boolean"))
-    //         );
-    //     }
+        #[test]
+        fn suggest_last_token() {
+            let parser = BooleanParser::create(());
+            let cases = vec![
+                ("t", vec!["rue"]),
+                ("f", vec!["alse"]),
+                ("y", vec!["es"]),
+                ("n", vec!["o"]),
+                ("m", vec![]),
+            ];
 
-    //     #[test]
-    //     fn parse_empty() {
-    //         let parser = BooleanParser::create(());
-    //         assert_eq!(
-    //             Parser::<()>::parse(&parser, ""),
-    //             ParseResult::Failed(ParseError::token_required("boolean"))
-    //         );
-    //     }
+            for (input, expected) in cases {
+                let stream = TokenStream::new(input);
+                let result = Parser::<()>::complete(&parser, stream);
+                assert!(result.value_consumed);
+                assert!(result.remaining.is_none());
+                assert_eq!(
+                    result.suggestions,
+                    HashSet::from_iter(expected.iter().copied().map(Cow::Borrowed))
+                );
+            }
+        }
 
-    //     #[test]
-    //     fn parse_unknown_attribure() {
-    //         let parser = BooleanParser::create(());
-    //         assert_eq!(
-    //             Parser::<()>::parse(&parser, "--unknown abc"),
-    //             ParseResult::UnrecognizedAttribute("unknown".into(), "abc")
-    //         );
-    //     }
-
-    //     #[test]
-    //     fn suggestions() {
-    //         let parser = BooleanParser::create(());
-    //         assert_eq!(
-    //             Parser::<()>::complete(&parser, "t"),
-    //             CompletionResult::Suggestions(vec!["rue".into()])
-    //         );
-    //         assert_eq!(
-    //             Parser::<()>::complete(&parser, "f"),
-    //             CompletionResult::Suggestions(vec!["alse".into()])
-    //         );
-    //         assert_eq!(
-    //             Parser::<()>::complete(&parser, "y"),
-    //             CompletionResult::Suggestions(vec!["es".into()])
-    //         );
-    //         assert_eq!(
-    //             Parser::<()>::complete(&parser, "n"),
-    //             CompletionResult::Suggestions(vec!["o".into()])
-    //         );
-    //         assert_eq!(
-    //             Parser::<()>::complete(&parser, "m"),
-    //             CompletionResult::empty()
-    //         );
-    //         assert_eq!(
-    //             Parser::<()>::complete(&parser, "false next"),
-    //             CompletionResult::Consumed("next")
-    //         );
-    //     }
-    // }
+        #[test]
+        fn suggest_with_space() {
+            let parser = IntegerParser::<i16>::create(());
+            let stream = TokenStream::new("tr ");
+            let result = Parser::<()>::complete(&parser, stream);
+            assert!(result.value_consumed);
+            assert!(result.suggestions.is_empty());
+            assert!(result.remaining.is_some());
+        }
+    }
 }
