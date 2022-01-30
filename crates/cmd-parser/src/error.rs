@@ -1,6 +1,8 @@
 use std::borrow::Cow;
 use std::fmt;
 
+use crate::token_stream::{Token, TokenStream};
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ParseErrorKind {
     TokenParse,
@@ -128,5 +130,41 @@ impl<'a> fmt::Display for ParseError<'a> {
                 f.write_fmt(format_args!("unknown attribute: \"{}\"", attribute))
             }
         }
+    }
+}
+
+pub enum ParseFailure<'a> {
+    Error(ParseError<'a>),
+    Unrecognized(UnrecognizedToken<'a>),
+}
+
+impl<'a, E: Into<ParseError<'a>>> From<E> for ParseFailure<'a> {
+    fn from(error: E) -> Self {
+        ParseFailure::Error(error.into())
+    }
+}
+
+pub struct UnrecognizedToken<'a> {
+    token: Token<'a>,
+    remaining: TokenStream<'a>,
+}
+
+impl<'a> UnrecognizedToken<'a> {
+    pub fn new(token: Token<'a>, remaining: TokenStream<'a>) -> Self {
+        UnrecognizedToken { token, remaining }
+    }
+
+    pub fn token(&self) -> Token<'a> {
+        self.token
+    }
+
+    pub fn remaining(&self) -> &TokenStream<'a> {
+        &self.remaining
+    }
+}
+
+impl<'a> From<UnrecognizedToken<'a>> for ParseFailure<'a> {
+    fn from(unrecognized: UnrecognizedToken<'a>) -> Self {
+        ParseFailure::Unrecognized(unrecognized)
     }
 }
