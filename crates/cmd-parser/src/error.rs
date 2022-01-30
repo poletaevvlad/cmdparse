@@ -131,6 +131,12 @@ impl<'a> From<UnrecognizedToken<'a>> for ParseFailure<'a> {
     }
 }
 
+impl<'a> UnrecognizedToken<'a> {
+    pub fn into_error(self) -> ParseError<'a> {
+        ParseError::unknown(self.token())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::ParseError;

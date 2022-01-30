@@ -1,6 +1,6 @@
 mod error;
 pub mod primitives;
-// pub mod sequences;
+pub mod sequences;
 pub mod tokens;
 pub mod utils;
 

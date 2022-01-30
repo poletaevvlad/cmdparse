@@ -81,6 +81,14 @@ impl<T> TokenValue<T> {
             TokenValue::Attribute(inner) => inner,
         }
     }
+
+    pub fn is_attribute(&self) -> bool {
+        matches!(self, TokenValue::Attribute(_))
+    }
+
+    pub fn is_text(&self) -> bool {
+        matches!(self, TokenValue::Text(_))
+    }
 }
 
 impl<'a> TokenValue<RawLexeme<'a>> {

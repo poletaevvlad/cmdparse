@@ -1,6 +1,7 @@
 use super::lexing::{skip_ws, take_lexeme, Lexeme, LexemeKind};
 use super::Token;
-use crate::error::UnbalancedParenthesis;
+use crate::error::{ParseError, UnbalancedParenthesis};
+use crate::{CompletionResult, ParseFailure, ParseResult};
 
 #[derive(Debug, Clone, Copy)]
 pub struct TokenStream<'a> {
@@ -15,6 +16,10 @@ impl<'a> TokenStream<'a> {
             remaining,
             next_lexeme,
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.peek().is_none()
     }
 
     fn advance(&self) -> TokenStream<'a> {
@@ -41,20 +46,71 @@ impl<'a> TokenStream<'a> {
         }
     }
 
-    pub fn enter_nested(&self) -> (NestingGuard, TokenStream) {
+    pub fn with_nested<R, F: FnOnce(TokenStream<'a>) -> ParseResult<'a, R>>(
+        &self,
+        callback: F,
+    ) -> ParseResult<'a, R> {
+        let (guard, stream) = self.enter_nested();
+        let has_parents = guard.has_parens();
+        let (result, stream) = match callback(stream) {
+            Ok(sucess) => sucess,
+            Err(error) if !has_parents => return Err(error),
+            Err(error @ ParseFailure::Error(_)) => return Err(error),
+            Err(ParseFailure::Unrecognized(unrecognized)) => {
+                return Err(unrecognized.into_error().into())
+            }
+        };
+        match stream.exit_nested(guard) {
+            Ok(remaining) => Ok((result, remaining)),
+            Err(Ok(token)) => Err(ParseError::unknown(token).into()),
+            Err(Err(error)) => Err(error.into()),
+        }
+    }
+
+    pub fn complete_nested<F: FnOnce(TokenStream<'a>) -> CompletionResult<'a>>(
+        &self,
+        callback: F,
+    ) -> CompletionResult<'a> {
+        let (guard, stream) = self.enter_nested();
+        if guard.has_parens() {
+            let mut end_stream = stream;
+            let mut paren_depth = 1;
+            while paren_depth > 0 {
+                match end_stream.next_lexeme {
+                    Some(lexeme) if matches!(lexeme.kind, LexemeKind::OpeningParen) => {
+                        paren_depth += 1;
+                    }
+                    Some(lexeme) if matches!(lexeme.kind, LexemeKind::ClosingParen) => {
+                        paren_depth -= 1;
+                    }
+                    Some(_) => (),
+                    None => break,
+                }
+                end_stream = end_stream.advance();
+            }
+
+            if paren_depth == 0 {
+                return CompletionResult::consumed(end_stream);
+            }
+        }
+
+        callback(stream)
+    }
+
+    pub fn enter_nested(&self) -> (NestingGuard, TokenStream<'a>) {
         match self.next_lexeme {
             Some(lexeme) if matches!(lexeme.kind, LexemeKind::OpeningParen) => {
-                (NestingGuard { in_parens: true }, self.advance())
+                (NestingGuard { has_parens: true }, self.advance())
             }
-            Some(_) | None => (NestingGuard { in_parens: false }, *self),
+            Some(_) | None => (NestingGuard { has_parens: false }, *self),
         }
     }
 
     pub fn exit_nested(
         &self,
         guard: NestingGuard,
-    ) -> Result<TokenStream, Result<Token<'a>, UnbalancedParenthesis>> {
-        if !guard.in_parens {
+    ) -> Result<TokenStream<'a>, Result<Token<'a>, UnbalancedParenthesis>> {
+        if !guard.has_parens {
             return Ok(*self);
         };
 
@@ -72,13 +128,24 @@ impl<'a> TokenStream<'a> {
 }
 
 pub struct NestingGuard {
-    in_parens: bool,
+    has_parens: bool,
+}
+
+impl NestingGuard {
+    fn has_parens(&self) -> bool {
+        self.has_parens
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use super::TokenStream;
-    use crate::tokens::{token_macro::token, Token, UnbalancedParenthesis};
+    use crate::{
+        tokens::{token_macro::token, Token, UnbalancedParenthesis},
+        CompletionResult,
+    };
 
     fn assert_takes<'a>(stream: TokenStream<'a>, expected: Token) -> TokenStream<'a> {
         let peeked = stream.peek().unwrap().unwrap();
@@ -152,5 +219,26 @@ mod tests {
 
         let error = stream.exit_nested(guard).unwrap_err();
         assert!(matches!(error, Err(UnbalancedParenthesis)));
+    }
+
+    #[test]
+    fn completes_nested_skips_if_closed() {
+        let stream = TokenStream::new("(first (()(second))) third");
+        let result = stream.complete_nested(|_input| panic!("should not be called"));
+        assert!(result.value_consumed);
+        assert!(result.suggestions.is_empty());
+        assert_takes(result.remaining.unwrap(), token!("third", last));
+    }
+
+    #[test]
+    fn completes_nested_calls_parser_if_not_closed() {
+        let stream = TokenStream::new("(first (()(second) third");
+        let result = stream.complete_nested(|input| {
+            assert_takes(input, token!("first"));
+            CompletionResult::complete(HashSet::from(["abc".into()]))
+        });
+        assert!(result.value_consumed);
+        assert_eq!(result.suggestions, HashSet::from(["abc".into()]));
+        assert!(result.remaining.is_none());
     }
 }
