@@ -93,6 +93,7 @@ impl<'a> fmt::Display for ParseError<'a> {
     }
 }
 
+#[derive(Debug)]
 pub enum ParseFailure<'a> {
     Error(ParseError<'a>),
     Unrecognized(UnrecognizedToken<'a>),
@@ -104,6 +105,7 @@ impl<'a, E: Into<ParseError<'a>>> From<E> for ParseFailure<'a> {
     }
 }
 
+#[derive(Debug)]
 pub struct UnrecognizedToken<'a> {
     token: Token<'a>,
     remaining: TokenStream<'a>,

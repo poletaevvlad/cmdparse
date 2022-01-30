@@ -9,7 +9,7 @@ pub struct TokenStream<'a> {
 }
 
 impl<'a> TokenStream<'a> {
-    fn from_str(input: &'a str) -> Self {
+    pub fn new(input: &'a str) -> Self {
         let (next_lexeme, remaining) = take_lexeme(skip_ws(input));
         TokenStream {
             remaining,
@@ -90,7 +90,7 @@ mod tests {
 
     #[test]
     fn taking_tokens() {
-        let stream = TokenStream::from_str("first --second third");
+        let stream = TokenStream::new("first --second third");
         let stream = assert_takes(stream, token!("first"));
         let stream = assert_takes(stream, token!(--"second"));
         let stream = assert_takes(stream, token!("third", last));
@@ -100,7 +100,7 @@ mod tests {
 
     #[test]
     fn takes_nested_structures() {
-        let stream = TokenStream::from_str("first (--second third) fourth");
+        let stream = TokenStream::new("first (--second third) fourth");
         let stream = assert_takes(stream, token!("first"));
 
         assert!(matches!(stream.peek(), Some(Err(UnbalancedParenthesis))));
@@ -120,7 +120,7 @@ mod tests {
 
     #[test]
     fn takes_nested_structures_no_parens() {
-        let stream = TokenStream::from_str("first --second third fourth");
+        let stream = TokenStream::new("first --second third fourth");
         let stream = assert_takes(stream, token!("first"));
         let (guard, stream) = stream.enter_nested();
         let stream = assert_takes(stream, token!(--"second"));
@@ -131,7 +131,7 @@ mod tests {
 
     #[test]
     fn nested_struct_remaining_tokens() {
-        let stream = TokenStream::from_str("(first second) third");
+        let stream = TokenStream::new("(first second) third");
 
         assert!(matches!(stream.peek(), Some(Err(UnbalancedParenthesis))));
         assert!(matches!(stream.take(), Some(Err(UnbalancedParenthesis))));
@@ -145,7 +145,7 @@ mod tests {
 
     #[test]
     fn nested_struct_remaining_paren() {
-        let stream = TokenStream::from_str("(first (second)) third");
+        let stream = TokenStream::new("(first (second)) third");
 
         let (guard, stream) = stream.enter_nested();
         let stream = assert_takes(stream, token!("first"));

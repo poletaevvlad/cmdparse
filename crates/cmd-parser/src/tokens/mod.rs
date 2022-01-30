@@ -157,7 +157,7 @@ mod tests {
 
         #[test]
         fn format_simple() {
-            assert_eq!(RawLexeme::from_str("simple").to_string(), "\"simple\"")
+            assert_eq!(RawLexeme::from_str("simple").to_string(), "\"simple\"");
         }
 
         #[test]
