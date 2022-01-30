@@ -1,5 +1,6 @@
 use super::lexing::{skip_ws, take_lexeme, Lexeme, LexemeKind};
-use super::{Token, UnexpectedPunctuation};
+use super::Token;
+use crate::error::UnbalancedParenthesis;
 
 #[derive(Debug, Clone, Copy)]
 pub struct TokenStream<'a> {
@@ -24,7 +25,7 @@ impl<'a> TokenStream<'a> {
         }
     }
 
-    pub fn peek(&self) -> Option<Result<Token<'a>, UnexpectedPunctuation>> {
+    pub fn peek(&self) -> Option<Result<Token<'a>, UnbalancedParenthesis>> {
         match self.next_lexeme {
             Some(lexeme) if matches!(lexeme.kind, LexemeKind::ClosingParen) => None,
             Some(lexeme) => Some(Token::from_lexeme(lexeme)),
@@ -32,7 +33,7 @@ impl<'a> TokenStream<'a> {
         }
     }
 
-    pub fn take(&self) -> Option<Result<(Token<'a>, TokenStream<'a>), UnexpectedPunctuation>> {
+    pub fn take(&self) -> Option<Result<(Token<'a>, TokenStream<'a>), UnbalancedParenthesis>> {
         match self.peek() {
             Some(Ok(token)) => Some(Ok((token, self.advance()))),
             Some(Err(error)) => Some(Err(error)),
@@ -52,7 +53,7 @@ impl<'a> TokenStream<'a> {
     pub fn exit_nested(
         &self,
         guard: NestingGuard,
-    ) -> Result<TokenStream, Result<Token<'a>, UnexpectedPunctuation>> {
+    ) -> Result<TokenStream, Result<Token<'a>, UnbalancedParenthesis>> {
         if !guard.in_parens {
             return Ok(*self);
         };
@@ -77,7 +78,7 @@ pub struct NestingGuard {
 #[cfg(test)]
 mod tests {
     use super::TokenStream;
-    use crate::tokens::{token_macro::token, Token, UnexpectedPunctuation};
+    use crate::tokens::{token_macro::token, Token, UnbalancedParenthesis};
 
     fn assert_takes<'a>(stream: TokenStream<'a>, expected: Token) -> TokenStream<'a> {
         let peeked = stream.peek().unwrap().unwrap();
@@ -102,8 +103,8 @@ mod tests {
         let stream = TokenStream::from_str("first (--second third) fourth");
         let stream = assert_takes(stream, token!("first"));
 
-        assert!(matches!(stream.peek(), Some(Err(UnexpectedPunctuation))));
-        assert!(matches!(stream.take(), Some(Err(UnexpectedPunctuation))));
+        assert!(matches!(stream.peek(), Some(Err(UnbalancedParenthesis))));
+        assert!(matches!(stream.take(), Some(Err(UnbalancedParenthesis))));
 
         let (guard, stream) = stream.enter_nested();
         let stream = assert_takes(stream, token!(--"second"));
@@ -132,8 +133,8 @@ mod tests {
     fn nested_struct_remaining_tokens() {
         let stream = TokenStream::from_str("(first second) third");
 
-        assert!(matches!(stream.peek(), Some(Err(UnexpectedPunctuation))));
-        assert!(matches!(stream.take(), Some(Err(UnexpectedPunctuation))));
+        assert!(matches!(stream.peek(), Some(Err(UnbalancedParenthesis))));
+        assert!(matches!(stream.take(), Some(Err(UnbalancedParenthesis))));
 
         let (guard, stream) = stream.enter_nested();
         let stream = assert_takes(stream, token!("first"));
@@ -150,6 +151,6 @@ mod tests {
         let stream = assert_takes(stream, token!("first"));
 
         let error = stream.exit_nested(guard).unwrap_err();
-        assert!(matches!(error, Err(UnexpectedPunctuation)));
+        assert!(matches!(error, Err(UnbalancedParenthesis)));
     }
 }

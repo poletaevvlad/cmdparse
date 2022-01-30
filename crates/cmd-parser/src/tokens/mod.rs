@@ -1,13 +1,22 @@
 mod lexing;
 mod stream;
 
+use crate::error::UnbalancedParenthesis;
 use lexing::{Lexeme, LexemeKind};
-use std::borrow::Cow;
+use std::{
+    borrow::Cow,
+    fmt::{self, Write},
+};
+pub use stream::{NestingGuard, TokenStream};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RawLexeme<'a>(&'a str);
 
 impl<'a> RawLexeme<'a> {
+    pub(crate) fn from_str(text: &'a str) -> Self {
+        RawLexeme(text)
+    }
+
     pub fn parse_string(self) -> Cow<'a, str> {
         let text = self.0;
 
@@ -37,8 +46,20 @@ impl<'a> RawLexeme<'a> {
     }
 }
 
-#[derive(Debug)]
-pub struct UnexpectedPunctuation;
+impl<'a> fmt::Display for RawLexeme<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let first_char = self.0.chars().next();
+        if let Some(quote @ '\'' | quote @ '"') = first_char {
+            f.write_str(self.0)?;
+            if !self.0.ends_with(quote) {
+                f.write_char(quote)?;
+            }
+            Ok(())
+        } else {
+            f.write_fmt(format_args!("\"{}\"", self.0))
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenValue<T> {
@@ -51,6 +72,13 @@ impl<T> TokenValue<T> {
         match self {
             TokenValue::Text(text) => TokenValue::Text(f(text)),
             TokenValue::Attribute(attr) => TokenValue::Attribute(f(attr)),
+        }
+    }
+
+    pub fn into_inner(self) -> T {
+        match self {
+            TokenValue::Text(inner) => inner,
+            TokenValue::Attribute(inner) => inner,
         }
     }
 }
@@ -68,16 +96,21 @@ pub struct Token<'a> {
 }
 
 impl<'a> Token<'a> {
-    fn from_lexeme(lexeme: Lexeme<'a>) -> Result<Self, UnexpectedPunctuation> {
+    #[cfg(test)]
+    pub(crate) fn from_parts(value: TokenValue<RawLexeme<'a>>, is_last: bool) -> Self {
+        Token { value, is_last }
+    }
+
+    fn from_lexeme(lexeme: Lexeme<'a>) -> Result<Self, UnbalancedParenthesis> {
         let token_value = match lexeme.kind {
             LexemeKind::OpeningParen | LexemeKind::ClosingParen => {
-                return Err(UnexpectedPunctuation)
+                return Err(UnbalancedParenthesis)
             }
             LexemeKind::Text(text) => TokenValue::Text(text),
             LexemeKind::Attribute(attr) => TokenValue::Attribute(attr),
         };
         Ok(Token {
-            value: token_value.map(RawLexeme),
+            value: token_value.map(RawLexeme::from_str),
             is_last: lexeme.is_last,
         })
     }
@@ -96,16 +129,16 @@ pub(crate) mod token_macro {
 
     macro_rules! token {
         (--$text:literal $(, $mod:ident)?) => {
-            $crate::tokens::Token {
-                value: $crate::tokens::TokenValue::Attribute($crate::tokens::RawLexeme($text)),
-                is_last: token!(@internal is_last $($mod)?),
-            }
+            $crate::tokens::Token::from_parts (
+                $crate::tokens::TokenValue::Attribute($crate::tokens::RawLexeme::from_str($text)),
+                token!(@internal is_last $($mod)?),
+            )
         };
         ($text:literal $(, $mod:ident)?) => {
-            $crate::tokens::Token {
-                value: $crate::tokens::TokenValue::Text($crate::tokens::RawLexeme($text)),
-                is_last: token!(@internal is_last $($mod)?),
-            }
+            $crate::tokens::Token::from_parts (
+                $crate::tokens::TokenValue::Text($crate::tokens::RawLexeme::from_str($text)),
+                token!(@internal is_last $($mod)?),
+            )
         };
 
         (@internal is_last last) => {true};
@@ -119,6 +152,27 @@ pub(crate) mod token_macro {
 mod tests {
     use super::RawLexeme;
 
+    mod format_raw_lexeme {
+        use super::*;
+
+        #[test]
+        fn format_simple() {
+            assert_eq!(RawLexeme::from_str("simple").to_string(), "\"simple\"")
+        }
+
+        #[test]
+        fn format_quoted() {
+            assert_eq!(RawLexeme::from_str("'quoted'").to_string(), "'quoted'");
+            assert_eq!(RawLexeme::from_str("\"quoted\"").to_string(), "\"quoted\"");
+        }
+
+        #[test]
+        fn format_quoted_partial() {
+            assert_eq!(RawLexeme::from_str("'quoted").to_string(), "'quoted'");
+            assert_eq!(RawLexeme::from_str("\"quoted").to_string(), "\"quoted\"");
+        }
+    }
+
     mod parse_raw_lexeme {
         use super::*;
         use std::borrow::Cow;
@@ -127,14 +181,14 @@ mod tests {
             ($name:ident, $text:literal => $variant:ident($result:literal)) => {
                 #[test]
                 fn $name() {
-                    let result = RawLexeme($text).parse_string();
+                    let result = RawLexeme::from_str($text).parse_string();
                     assert_eq!(result, Cow::Borrowed($result));
                     assert!(matches!(result, Cow::$variant(_)));
                 }
             };
         }
 
-        test_parse!(emty, "" => Borrowed(""));
+        test_parse!(empty, "" => Borrowed(""));
         test_parse!(non_empty, "abc" => Borrowed("abc"));
         test_parse!(quoted_empty_single, "''" => Owned(""));
         test_parse!(quoted_empty_double, "\"\"" => Owned(""));

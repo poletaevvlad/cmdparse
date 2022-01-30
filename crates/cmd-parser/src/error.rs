@@ -1,107 +1,65 @@
+use crate::tokens::{Token, TokenStream, TokenValue};
 use std::borrow::Cow;
 use std::fmt;
 
-use crate::token_stream::{Token, TokenStream};
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum ParseErrorKind {
-    TokenParse,
-    TokenRequired,
-    UnexpectedToken,
-    UnknownVariant,
-    UnknownAttribute,
-}
+#[derive(Debug)]
+pub struct UnbalancedParenthesis;
 
 #[derive(Debug, PartialEq)]
 enum ParseErrorVariant<'a> {
-    TokenParse(Cow<'a, str>, Option<Cow<'static, str>>),
+    Invalid {
+        token: Token<'a>,
+        message: Option<Cow<'static, str>>,
+    },
+    Unknown(Token<'a>),
     TokenRequired,
-    UnexpectedToken(Cow<'a, str>),
-    UnknownVariant(Cow<'a, str>),
-    UnknownAttribute(Cow<'a, str>),
-}
-
-impl<'a> ParseErrorVariant<'a> {
-    fn as_kind(&self) -> ParseErrorKind {
-        match self {
-            ParseErrorVariant::TokenParse(_, _) => ParseErrorKind::TokenParse,
-            ParseErrorVariant::TokenRequired => ParseErrorKind::TokenRequired,
-            ParseErrorVariant::UnexpectedToken(_) => ParseErrorKind::UnexpectedToken,
-            ParseErrorVariant::UnknownVariant(_) => ParseErrorKind::UnknownVariant,
-            ParseErrorVariant::UnknownAttribute(_) => ParseErrorKind::UnknownAttribute,
-        }
-    }
+    UnbalancedParenthesis,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct ParseError<'a> {
     variant: ParseErrorVariant<'a>,
-    expected: Cow<'static, str>,
+    expected: Option<Cow<'static, str>>,
 }
 
 impl<'a> ParseError<'a> {
-    pub fn unexpected_token(token: Cow<'a, str>) -> Self {
+    pub fn unknown(token: Token<'a>) -> Self {
         ParseError {
-            variant: ParseErrorVariant::UnexpectedToken(token),
-            expected: "".into(),
+            variant: ParseErrorVariant::Unknown(token),
+            expected: None,
         }
     }
 
-    pub fn token_required(expected: impl Into<Cow<'static, str>>) -> Self {
+    pub fn token_required() -> Self {
         ParseError {
             variant: ParseErrorVariant::TokenRequired,
-            expected: expected.into(),
+            expected: None,
         }
     }
 
-    pub fn token_parse(
-        token: Cow<'a, str>,
-        error: Option<Cow<'static, str>>,
-        expected: impl Into<Cow<'static, str>>,
-    ) -> Self {
+    pub fn unbalanced_parenthesis() -> Self {
         ParseError {
-            variant: ParseErrorVariant::TokenParse(token, error),
-            expected: expected.into(),
+            variant: ParseErrorVariant::UnbalancedParenthesis,
+            expected: None,
         }
     }
 
-    pub fn unknown_attribute(token: impl Into<Cow<'a, str>>) -> Self {
+    pub fn invalid(token: Token<'a>, message: Option<Cow<'static, str>>) -> Self {
         ParseError {
-            variant: ParseErrorVariant::UnknownAttribute(token.into()),
-            expected: "".into(),
+            variant: ParseErrorVariant::Invalid { token, message },
+            expected: None,
         }
     }
 
-    pub fn unknown_variant(token: impl Into<Cow<'a, str>>) -> Self {
-        ParseError {
-            variant: ParseErrorVariant::UnknownVariant(token.into()),
-            expected: "".into(),
-        }
+    pub fn expected(mut self, expected: impl Into<Cow<'static, str>>) -> Self {
+        self.expected = Some(expected.into());
+        self
     }
+}
 
-    pub fn into_static(self) -> ParseError<'static> {
-        ParseError {
-            variant: match self.variant {
-                ParseErrorVariant::TokenParse(token, error) => {
-                    ParseErrorVariant::TokenParse(Cow::Owned(token.into_owned()), error)
-                }
-                ParseErrorVariant::TokenRequired => ParseErrorVariant::TokenRequired,
-                ParseErrorVariant::UnexpectedToken(token) => {
-                    ParseErrorVariant::UnexpectedToken(Cow::Owned(token.into_owned()))
-                }
-                ParseErrorVariant::UnknownVariant(token) => {
-                    ParseErrorVariant::UnknownVariant(Cow::Owned(token.into_owned()))
-                }
-                ParseErrorVariant::UnknownAttribute(token) => {
-                    ParseErrorVariant::UnknownAttribute(Cow::Owned(token.into_owned()))
-                }
-            },
-            expected: self.expected,
-        }
-    }
-
-    pub fn kind(&self) -> ParseErrorKind {
-        self.variant.as_kind()
+impl<'a> From<UnbalancedParenthesis> for ParseError<'a> {
+    fn from(_: UnbalancedParenthesis) -> Self {
+        ParseError::unbalanced_parenthesis()
     }
 }
 
@@ -110,26 +68,28 @@ impl<'a> std::error::Error for ParseError<'a> {}
 impl<'a> fmt::Display for ParseError<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.variant {
-            ParseErrorVariant::TokenParse(token, error) => {
-                f.write_fmt(format_args!("invalid {} \"{}\"", self.expected, token))?;
-                if let Some(error) = error {
-                    f.write_fmt(format_args!(": {}", error))?;
+            ParseErrorVariant::Invalid { token, message } => {
+                f.write_fmt(format_args!("cannot parse {}", token.value().into_inner()))?;
+                if let Some(message) = message {
+                    f.write_fmt(format_args!(" ({})", message))?;
                 }
-                Ok(())
             }
-            ParseErrorVariant::TokenRequired => {
-                f.write_fmt(format_args!("expected {}", self.expected))
-            }
-            ParseErrorVariant::UnexpectedToken(token) => {
-                f.write_fmt(format_args!("unexpected token: \"{}\"", token))
-            }
-            ParseErrorVariant::UnknownVariant(variant) => {
-                f.write_fmt(format_args!("unknown variant: \"{}\"", variant))
-            }
-            ParseErrorVariant::UnknownAttribute(attribute) => {
-                f.write_fmt(format_args!("unknown attribute: \"{}\"", attribute))
-            }
+            ParseErrorVariant::Unknown(unknown) => match unknown.value() {
+                TokenValue::Text(text) => {
+                    f.write_fmt(format_args!("unrecognized token: {}", text))?;
+                }
+                TokenValue::Attribute(attr) => {
+                    f.write_fmt(format_args!("unrecognized attribute: {}", attr))?;
+                }
+            },
+            ParseErrorVariant::TokenRequired => f.write_str("not enough tokens")?,
+            ParseErrorVariant::UnbalancedParenthesis => f.write_str("unbalanced parenthesis")?,
         }
+
+        if let Some(expected) = &self.expected {
+            f.write_fmt(format_args!(", expected {}", expected))?;
+        }
+        Ok(())
     }
 }
 
@@ -166,5 +126,45 @@ impl<'a> UnrecognizedToken<'a> {
 impl<'a> From<UnrecognizedToken<'a>> for ParseFailure<'a> {
     fn from(unrecognized: UnrecognizedToken<'a>) -> Self {
         ParseFailure::Unrecognized(unrecognized)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ParseError;
+
+    mod error_display {
+        use super::*;
+        use crate::tokens::token_macro::token;
+
+        #[test]
+        fn invalid() {
+            let error = ParseError::invalid(token!("<<token>>"), None).expected("integer");
+            assert_eq!(
+                &error.to_string(),
+                "cannot parse \"<<token>>\", expected integer"
+            );
+        }
+
+        #[test]
+        fn invalid_with_message() {
+            let error = ParseError::invalid(token!("<<token>>"), Some("not a number".into()));
+            assert_eq!(
+                &error.to_string(),
+                "cannot parse \"<<token>>\" (not a number)"
+            );
+        }
+
+        #[test]
+        fn unknown_attribute() {
+            let error = ParseError::unknown(token!(--"<<attr>>"));
+            assert_eq!(&error.to_string(), "unrecognized attribute: \"<<attr>>\"");
+        }
+
+        #[test]
+        fn unknown_text() {
+            let error = ParseError::unknown(token!("<<text>>"));
+            assert_eq!(&error.to_string(), "unrecognized token: \"<<text>>\"");
+        }
     }
 }

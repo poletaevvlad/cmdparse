@@ -1,4 +1,4 @@
-// mod error;
+mod error;
 // pub mod primitives;
 // pub mod sequences;
 pub mod tokens;
