@@ -76,24 +76,25 @@ where
     }
 
     fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
-        match input.take().transpose()? {
-            Some((token, remaining)) => match token.value() {
-                TokenValue::Text(text) => match text.parse_string().parse() {
-                    Ok(value) => Ok((value, remaining)),
-                    Err(error) => {
-                        let message = match error.kind() {
-                            IntErrorKind::PosOverflow => Some("too large"),
-                            IntErrorKind::NegOverflow => Some("too small"),
-                            _ => None,
-                        };
-                        Err(ParseError::invalid(token, message.map(Cow::Borrowed))
-                            .expected("integer")
-                            .into())
-                    }
-                },
-                TokenValue::Attribute(_) => Err(UnrecognizedToken::new(token, remaining).into()),
+        let (token, remaining) = input
+            .take()
+            .transpose()?
+            .ok_or_else(|| ParseError::token_required().expected("integer"))?;
+        match token.value() {
+            TokenValue::Text(text) => match text.parse_string().parse() {
+                Ok(value) => Ok((value, remaining)),
+                Err(error) => {
+                    let message = match error.kind() {
+                        IntErrorKind::PosOverflow => Some("too large"),
+                        IntErrorKind::NegOverflow => Some("too small"),
+                        _ => None,
+                    };
+                    Err(ParseError::invalid(token, message.map(Cow::Borrowed))
+                        .expected("integer")
+                        .into())
+                }
             },
-            None => Err(ParseError::token_required().expected("integer").into()),
+            TokenValue::Attribute(_) => Err(UnrecognizedToken::new(token, remaining).into()),
         }
     }
 
@@ -117,17 +118,18 @@ where
     }
 
     fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
-        match input.take().transpose()? {
-            Some((token, remaining)) => match token.value() {
-                TokenValue::Text(text) => match text.parse_string().parse() {
-                    Ok(value) => Ok((value, remaining)),
-                    Err(_) => Err(ParseError::invalid(token, None)
-                        .expected("real number")
-                        .into()),
-                },
-                TokenValue::Attribute(_) => Err(UnrecognizedToken::new(token, remaining).into()),
+        let (token, remaining) = input
+            .take()
+            .transpose()?
+            .ok_or_else(|| ParseError::token_required().expected("real number"))?;
+        match token.value() {
+            TokenValue::Text(text) => match text.parse_string().parse() {
+                Ok(value) => Ok((value, remaining)),
+                Err(_) => Err(ParseError::invalid(token, None)
+                    .expected("real number")
+                    .into()),
             },
-            None => Err(ParseError::token_required().expected("real number").into()),
+            TokenValue::Attribute(_) => Err(UnrecognizedToken::new(token, remaining).into()),
         }
     }
 
@@ -147,14 +149,13 @@ impl<Ctx> Parser<Ctx> for StringParser {
     }
 
     fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
-        match input.take().transpose()? {
-            Some((token, remaining)) => match token.value() {
-                TokenValue::Text(text) => {
-                    Ok((ToString::to_string(&text.parse_string()), remaining))
-                }
-                TokenValue::Attribute(_) => Err(UnrecognizedToken::new(token, remaining).into()),
-            },
-            None => Err(ParseError::token_required().expected("string").into()),
+        let (token, remaining) = input
+            .take()
+            .transpose()?
+            .ok_or_else(|| ParseError::token_required().expected("string"))?;
+        match token.value() {
+            TokenValue::Text(text) => Ok((ToString::to_string(&text.parse_string()), remaining)),
+            TokenValue::Attribute(_) => Err(UnrecognizedToken::new(token, remaining).into()),
         }
     }
 
@@ -178,16 +179,17 @@ impl<Ctx> Parser<Ctx> for BooleanParser {
     }
 
     fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
-        match input.take().transpose()? {
-            Some((token, remaining)) => match token.value() {
-                TokenValue::Text(text) => match text.parse_string().borrow() {
-                    "true" | "t" | "yes" | "y" => Ok((true, remaining)),
-                    "false" | "f" | "no" | "n" => Ok((false, remaining)),
-                    _ => Err(ParseError::invalid(token, None).expected("boolean").into()),
-                },
-                TokenValue::Attribute(_) => Err(UnrecognizedToken::new(token, remaining).into()),
+        let (token, remaining) = input
+            .take()
+            .transpose()?
+            .ok_or_else(|| ParseError::token_required().expected("boolean"))?;
+        match token.value() {
+            TokenValue::Text(text) => match text.parse_string().borrow() {
+                "true" | "t" | "yes" | "y" => Ok((true, remaining)),
+                "false" | "f" | "no" | "n" => Ok((false, remaining)),
+                _ => Err(ParseError::invalid(token, None).expected("boolean").into()),
             },
-            None => Err(ParseError::token_required().expected("boolean").into()),
+            TokenValue::Attribute(_) => Err(UnrecognizedToken::new(token, remaining).into()),
         }
     }
 
