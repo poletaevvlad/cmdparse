@@ -13,13 +13,11 @@ use tokens::TokenStream;
 
 type ParseResult<'a, T> = Result<(T, TokenStream<'a>), ParseFailure<'a>>;
 
-type Suggestions = HashSet<Cow<'static, str>>;
-
 #[derive(Debug)]
 pub struct CompletionResult<'a> {
     remaining: Option<TokenStream<'a>>,
     value_consumed: bool,
-    suggestions: Suggestions,
+    suggestions: HashSet<Cow<'static, str>>,
 }
 
 impl<'a> CompletionResult<'a> {
