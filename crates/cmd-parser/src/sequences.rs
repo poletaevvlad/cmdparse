@@ -123,36 +123,36 @@ impl<Ctx, C: ParsableCollection<Ctx> + Default> Parser<Ctx> for CollectionParser
     }
 }
 
-// pub struct DefaultValueParser<T> {
-//     _phantom: PhantomData<T>,
-// }
-//
-// impl<Ctx, T: Default> Parser<Ctx> for DefaultValueParser<T> {
-//     type Value = T;
-//
-//     fn create(_ctx: Ctx) -> Self {
-//         DefaultValueParser {
-//             _phantom: PhantomData,
-//         }
-//     }
-//
-//     fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
-//         ParseResult::Parsed(<T as Default>::default(), input)
-//     }
-//
-//     fn complete<'a>(&self, input: &'a str) -> CompletionResult<'a> {
-//         CompletionResult::Consumed(input)
-//     }
-// }
-//
-// impl<Ctx> Parsable<Ctx> for () {
-//     type Parser = DefaultValueParser<()>;
-// }
-//
-// impl<Ctx, T> Parsable<Ctx> for PhantomData<T> {
-//     type Parser = DefaultValueParser<PhantomData<T>>;
-// }
-//
+pub struct DefaultValueParser<T> {
+    _phantom: PhantomData<T>,
+}
+
+impl<Ctx, T: Default> Parser<Ctx> for DefaultValueParser<T> {
+    type Value = T;
+
+    fn create(_ctx: Ctx) -> Self {
+        DefaultValueParser {
+            _phantom: PhantomData,
+        }
+    }
+
+    fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
+        Ok((<T as Default>::default(), input))
+    }
+
+    fn complete<'a>(&self, input: TokenStream<'a>) -> CompletionResult<'a> {
+        CompletionResult::consumed(input)
+    }
+}
+
+impl<Ctx> Parsable<Ctx> for () {
+    type Parser = DefaultValueParser<()>;
+}
+
+impl<Ctx, T> Parsable<Ctx> for PhantomData<T> {
+    type Parser = DefaultValueParser<PhantomData<T>>;
+}
+
 // macro_rules! gen_parsable_tuple {
 //     ($parser_name:ident, $param_first:ident $($param:ident)*) => {
 //         #[allow(non_snake_case)]
@@ -245,65 +245,74 @@ impl<Ctx, C: ParsableCollection<Ctx> + Default> Parser<Ctx> for CollectionParser
 // gen_parsable_tuple!(TupleParser14, T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 T12 T13 T14);
 // gen_parsable_tuple!(TupleParser15, T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 T12 T13 T14 T15);
 // gen_parsable_tuple!(TupleParser16, T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 T12 T13 T14 T15 T16);
-//
-// pub struct BoxParser<Ctx, T: Parsable<Ctx>> {
-//     inner_parser: T::Parser,
-// }
-//
-// impl<Ctx, T: Parsable<Ctx>> Parser<Ctx> for BoxParser<Ctx, T> {
-//     type Value = Box<T>;
-//
-//     fn create(ctx: Ctx) -> Self {
-//         BoxParser {
-//             inner_parser: T::new_parser(ctx),
-//         }
-//     }
-//
-//     fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
-//         self.inner_parser.parse(input).map(Box::new)
-//     }
-//
-//     fn complete<'a>(&self, input: &'a str) -> CompletionResult<'a> {
-//         self.inner_parser.complete(input)
-//     }
-// }
-//
-// impl<Ctx, T: Parsable<Ctx>> Parsable<Ctx> for Box<T> {
-//     type Parser = BoxParser<Ctx, T>;
-// }
-//
-// pub struct OptionParser<Ctx, T: Parsable<Ctx>> {
-//     inner_parser: T::Parser,
-// }
-//
-// impl<Ctx, T: Parsable<Ctx>> Parser<Ctx> for OptionParser<Ctx, T> {
-//     type Value = Option<T>;
-//
-//     fn create(ctx: Ctx) -> Self {
-//         OptionParser {
-//             inner_parser: T::new_parser(ctx),
-//         }
-//     }
-//
-//     fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
-//         if has_tokens(input) {
-//             match self.inner_parser.parse(input).map(Some) {
-//                 ParseResult::UnrecognizedAttribute(_, _) => ParseResult::Parsed(None, input),
-//                 result => result,
-//             }
-//         } else {
-//             ParseResult::Parsed(None, input)
-//         }
-//     }
-//
-//     fn complete<'a>(&self, input: &'a str) -> CompletionResult<'a> {
-//         self.inner_parser.complete(input)
-//     }
-// }
-//
-// impl<Ctx, T: Parsable<Ctx>> Parsable<Ctx> for Option<T> {
-//     type Parser = OptionParser<Ctx, T>;
-// }
+
+pub struct BoxParser<Ctx, T: Parsable<Ctx>> {
+    inner_parser: T::Parser,
+}
+
+impl<Ctx, T: Parsable<Ctx>> Parser<Ctx> for BoxParser<Ctx, T> {
+    type Value = Box<T>;
+
+    fn create(ctx: Ctx) -> Self {
+        BoxParser {
+            inner_parser: T::new_parser(ctx),
+        }
+    }
+
+    fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
+        self.inner_parser
+            .parse(input)
+            .map(|(result, remaining)| (Box::new(result), remaining))
+    }
+
+    fn complete<'a>(&self, input: TokenStream<'a>) -> CompletionResult<'a> {
+        self.inner_parser.complete(input)
+    }
+}
+
+impl<Ctx, T: Parsable<Ctx>> Parsable<Ctx> for Box<T> {
+    type Parser = BoxParser<Ctx, T>;
+}
+
+pub struct OptionParser<Ctx, T: Parsable<Ctx>> {
+    inner_parser: T::Parser,
+}
+
+impl<Ctx, T: Parsable<Ctx>> Parser<Ctx> for OptionParser<Ctx, T> {
+    type Value = Option<T>;
+
+    fn create(ctx: Ctx) -> Self {
+        OptionParser {
+            inner_parser: T::new_parser(ctx),
+        }
+    }
+
+    fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
+        if input.is_empty() {
+            Ok((None, input))
+        } else {
+            match self.inner_parser.parse(input) {
+                Ok((value, remaining)) => Ok((Some(value), remaining)),
+                Err(error @ ParseFailure::Error(_)) => Err(error),
+                Err(ParseFailure::Unrecognized(unrecognized)) => {
+                    if let TokenValue::Attribute(_) = unrecognized.token().value() {
+                        Ok((None, input))
+                    } else {
+                        Err(unrecognized.into())
+                    }
+                }
+            }
+        }
+    }
+
+    fn complete<'a>(&self, input: TokenStream<'a>) -> CompletionResult<'a> {
+        self.inner_parser.complete(input)
+    }
+}
+
+impl<Ctx, T: Parsable<Ctx>> Parsable<Ctx> for Option<T> {
+    type Parser = OptionParser<Ctx, T>;
+}
 
 #[cfg(test)]
 mod tests {
@@ -311,6 +320,7 @@ mod tests {
     use crate::tokens::token_macro::token;
     use crate::tokens::{TokenStream, TokenValue};
     use crate::{CompletionResult, Parsable, ParseFailure, ParseResult, Parser};
+    use std::collections::HashSet;
 
     #[derive(PartialEq, Eq, Debug)]
     struct MockEnum;
@@ -354,7 +364,7 @@ mod tests {
             fn $name() {
                 let parser = <$type as Parsable<()>>::new_parser(());
                 let stream = TokenStream::new($input);
-                let (result, remaining) = parser.parse(stream).unwrap();
+                let (result, remaining) = Parser::<()>::parse(&parser, stream).unwrap();
                 assert_eq!(result, $value);
                 assert_eq!(remaining.peek().transpose().unwrap(), $next_token);
             }
@@ -364,7 +374,7 @@ mod tests {
             fn $name() {
                 let parser = <$type as Parsable<()>>::new_parser(());
                 let stream = TokenStream::new($input);
-                let error = parser.parse(stream).unwrap_err();
+                let error = Parser::<()>::parse(&parser, stream).unwrap_err();
                 match error {
                     ParseFailure::Error(error) => assert_eq!(error, $error),
                     ParseFailure::Unrecognized(unrecognized) => {
@@ -378,7 +388,7 @@ mod tests {
             fn $name() {
                 let parser = <$type as Parsable<()>>::new_parser(());
                 let stream = TokenStream::new($input);
-                let error = parser.parse(stream).unwrap_err();
+                let error = Parser::<()>::parse(&parser, stream).unwrap_err();
                 match error {
                     ParseFailure::Error(error) => {
                         panic!("expected Unrecognized, but found {:?}", error)
@@ -645,111 +655,77 @@ mod tests {
     //     }
     // }
 
-    // mod box_parser {
-    //     use super::*;
+    mod box_parser {
+        use super::*;
 
-    //     #[test]
-    //     fn parse() {
-    //         let parser = <Box<bool> as Parsable<()>>::new_parser(());
-    //         assert_eq!(
-    //             parser.parse("true 10"),
-    //             ParseResult::Parsed(Box::new(true), "10")
-    //         );
-    //     }
+        test_parse!(
+            parse, Box<bool>,
+            "true 10" => Ok(Box::new(true), Some(token!("10", last)))
+        );
+        test_complete!(completion, Box<bool>, "tr" => {
+            consumed: true,
+            remaining: None,
+            suggestions: ["ue"],
+        });
+    }
 
-    //     #[test]
-    //     fn completion() {
-    //         let parser = <Box<bool> as Parsable<()>>::new_parser(());
-    //         assert_eq!(
-    //             parser.complete("tr"),
-    //             CompletionResult::Suggestions(vec!["ue".into()])
-    //         );
-    //     }
-    // }
+    mod option_parser {
+        use super::*;
 
-    // mod option_parser {
-    //     use super::*;
+        test_parse!(
+            parse_some, Option<bool>,
+            "true remaining" => Ok(Some(true), Some(token!("remaining", last)))
+        );
+        test_parse!(
+            parse_none_empty, Option<bool>,
+            "" => Ok(None, None)
+        );
+        test_parse!(
+            parse_none_on_unknown_attribute, Option<bool>,
+            "--unknown" => Ok(None, Some(token!(--"unknown", last)))
+        );
 
-    //     #[test]
-    //     fn parse_some() {
-    //         let parser = <Option<bool> as Parsable<()>>::new_parser(());
-    //         assert_eq!(
-    //             parser.parse("true remaining"),
-    //             ParseResult::Parsed(Some(true), "remaining")
-    //         );
-    //     }
+        test_complete!(complete, Option<bool>, "tr" => {
+            consumed: true,
+            remaining: None,
+            suggestions: ["ue"]
+        });
 
-    //     #[test]
-    //     fn parse_none_on_unknown_attribute() {
-    //         let parser = <Option<bool> as Parsable<()>>::new_parser(());
-    //         assert_eq!(
-    //             parser.parse("--unknown"),
-    //             ParseResult::Parsed(None, "--unknown")
-    //         );
-    //     }
+        test_complete!(complete_consumed, Option<bool>, "true " => {
+            consumed: true,
+            remaining: Some(None),
+            suggestions: []
+        });
 
-    //     #[test]
-    //     fn parse_none() {
-    //         let parser = <Option<bool> as Parsable<()>>::new_parser(());
-    //         assert_eq!(parser.parse(""), ParseResult::Parsed(None, ""));
-    //         assert_eq!(parser.parse(")"), ParseResult::Parsed(None, ")"));
-    //     }
+        //     #[test]
+        //     fn parse_tuple_of_options() {
+        //         let parser = <Vec<(bool, Option<bool>)> as Parsable<()>>::new_parser(());
+        //         assert_eq!(
+        //             parser.parse("true false true false"),
+        //             ParseResult::Parsed(vec![(true, Some(false)), (true, Some(false))], "")
+        //         );
+        //         assert_eq!(
+        //             parser.parse("true false true"),
+        //             ParseResult::Parsed(vec![(true, Some(false)), (true, None)], "")
+        //         );
+        //         assert_eq!(
+        //             parser.parse("true false true --unknown"),
+        //             ParseResult::Parsed(vec![(true, Some(false)), (true, None)], "--unknown")
+        //         );
+        //     }
+    }
 
-    //     #[test]
-    //     fn parse_tuple_of_options() {
-    //         let parser = <Vec<(bool, Option<bool>)> as Parsable<()>>::new_parser(());
-    //         assert_eq!(
-    //             parser.parse("true false true false"),
-    //             ParseResult::Parsed(vec![(true, Some(false)), (true, Some(false))], "")
-    //         );
-    //         assert_eq!(
-    //             parser.parse("true false true"),
-    //             ParseResult::Parsed(vec![(true, Some(false)), (true, None)], "")
-    //         );
-    //         assert_eq!(
-    //             parser.parse("true false true --unknown"),
-    //             ParseResult::Parsed(vec![(true, Some(false)), (true, None)], "--unknown")
-    //         );
-    //     }
+    mod parse_default {
+        use super::*;
+        use std::marker::PhantomData;
 
-    //     #[test]
-    //     fn completion() {
-    //         let parser = <Option<bool> as Parsable<()>>::new_parser(());
-    //         assert_eq!(
-    //             parser.complete("tr"),
-    //             CompletionResult::Suggestions(vec!["ue".into()])
-    //         );
-    //     }
-    // }
-
-    // mod parse_default {
-    //     use super::*;
-    //     use std::marker::PhantomData;
-
-    //     #[test]
-    //     fn parser_tuple_0() {
-    //         let parser = <() as Parsable<()>>::new_parser(());
-    //         assert_eq!(
-    //             Parser::<()>::parse(&parser, "any"),
-    //             ParseResult::Parsed((), "any")
-    //         );
-    //         assert_eq!(
-    //             Parser::<()>::complete(&parser, "any"),
-    //             CompletionResult::Consumed("any")
-    //         );
-    //     }
-
-    //     #[test]
-    //     fn parser_phantom_data() {
-    //         let parser = <PhantomData<u8> as Parsable<()>>::new_parser(());
-    //         assert_eq!(
-    //             Parser::<()>::parse(&parser, "any"),
-    //             ParseResult::Parsed(PhantomData, "any")
-    //         );
-    //         assert_eq!(
-    //             Parser::<()>::complete(&parser, "any"),
-    //             CompletionResult::Consumed("any")
-    //         );
-    //     }
-    // }
+        test_parse!(
+            parse_union, (),
+            "any" => Ok((), Some(token!("any", last)))
+        );
+        test_parse!(
+            parse_phantom_data, PhantomData<u8>,
+            "any" => Ok(PhantomData, Some(token!("any", last)))
+        );
+    }
 }
