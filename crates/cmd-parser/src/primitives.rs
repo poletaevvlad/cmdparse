@@ -220,10 +220,10 @@ impl<Ctx> Parsable<Ctx> for bool {
 mod tests {
     use super::{IntegerParser, RealParser};
     use crate::error::{ParseError, ParseFailure};
-    use crate::primitives::BooleanParser;
-    use crate::tokens::{token_macro::token, TokenStream};
+    use crate::testing::{test_complete, token};
+    use crate::tokens::TokenStream;
     use crate::{Parsable, Parser};
-    use std::{borrow::Cow, collections::HashSet};
+    use std::collections::HashSet;
 
     macro_rules! test_parse {
         ($name:ident, $type:ty, $text:literal => Ok($value:expr)) => {
@@ -297,48 +297,26 @@ mod tests {
         test_parse!(parse_too_large, u16, "999999999" => Err(ParseError::invalid(token!("999999999", last), Some("too large".into())).expected("integer")));
         test_parse!(parse_empty_string, u16, "" => Err(ParseError::token_required().expected("integer")));
 
-        #[test]
-        fn suggest_empty_string() {
-            let parser = IntegerParser::<i16>::create(());
-            let stream = TokenStream::new("");
-            let result = Parser::<()>::complete(&parser, stream);
-            assert!(!result.value_consumed);
-            assert!(result.suggestions.is_empty());
-            assert!(result.remaining.is_none());
-        }
-
-        #[test]
-        fn suggest_attribute() {
-            let parser = IntegerParser::<i16>::create(());
-            let stream = TokenStream::new("--unknown abc");
-            let result = Parser::<()>::complete(&parser, stream);
-            assert!(!result.value_consumed);
-            assert!(result.suggestions.is_empty());
-            assert_eq!(
-                result.remaining.unwrap().peek().unwrap().unwrap(),
-                token!(--"unknown")
-            );
-        }
-
-        #[test]
-        fn suggest_last_token() {
-            let parser = IntegerParser::<i16>::create(());
-            let stream = TokenStream::new("abc");
-            let result = Parser::<()>::complete(&parser, stream);
-            assert!(result.value_consumed);
-            assert!(result.suggestions.is_empty());
-            assert!(result.remaining.is_none());
-        }
-
-        #[test]
-        fn suggest_with_space() {
-            let parser = IntegerParser::<i16>::create(());
-            let stream = TokenStream::new("abc ");
-            let result = Parser::<()>::complete(&parser, stream);
-            assert!(result.value_consumed);
-            assert!(result.suggestions.is_empty());
-            assert!(result.remaining.is_some());
-        }
+        test_complete!(complete_empty_string, i16, "" => {
+            consumed: false,
+            remaining: None,
+            suggestions: [],
+        });
+        test_complete!(complete_attribute, i16, "--unknown" => {
+            consumed: false,
+            remaining: Some(Some(token!(--"unknown", last))),
+            suggestions: [],
+        });
+        test_complete!(complete_last_token, i16, "abc" => {
+            consumed: true,
+            remaining: None,
+            suggestions: [],
+        });
+        test_complete!(complete_with_space, i16, "abc " => {
+            consumed: true,
+            remaining: Some(None),
+            suggestions: [],
+        });
     }
 
     mod real_parser {
@@ -388,60 +366,28 @@ mod tests {
         test_parse!(parse_empty_string, bool, "" => Err(ParseError::token_required().expected("boolean")));
         test_parse!(parse_invalie, bool, "abc" => Err(ParseError::invalid(token!("abc", last), None).expected("boolean")));
 
-        #[test]
-        fn suggest_empty_string() {
-            let parser = BooleanParser::create(());
-            let stream = TokenStream::new("");
-            let result = Parser::<()>::complete(&parser, stream);
-            assert!(!result.value_consumed);
-            assert!(result.suggestions.is_empty());
-            assert!(result.remaining.is_none());
-        }
+        test_complete!(complete_empty_string, bool, "" => {
+            consumed: false,
+            remaining: None,
+            suggestions: [],
+        });
 
-        #[test]
-        fn suggest_attribute() {
-            let parser = BooleanParser::create(());
-            let stream = TokenStream::new("--unknown abc");
-            let result = Parser::<()>::complete(&parser, stream);
-            assert!(!result.value_consumed);
-            assert!(result.suggestions.is_empty());
-            assert_eq!(
-                result.remaining.unwrap().peek().unwrap().unwrap(),
-                token!(--"unknown")
-            );
-        }
+        test_complete!(complete_atribute, bool, "--unknown abc" => {
+            consumed: false,
+            remaining: Some(Some(token!(--"unknown"))),
+            suggestions: [],
+        });
 
-        #[test]
-        fn suggest_last_token() {
-            let parser = BooleanParser::create(());
-            let cases = vec![
-                ("t", vec!["rue"]),
-                ("f", vec!["alse"]),
-                ("y", vec!["es"]),
-                ("n", vec!["o"]),
-                ("m", vec![]),
-            ];
+        test_complete!(complete_f, bool, "f" => {consumed: true, remaining: None, suggestions: ["alse"]});
+        test_complete!(complete_t, bool, "t" => {consumed: true, remaining: None, suggestions: ["rue"]});
+        test_complete!(complete_y, bool, "y" => {consumed: true, remaining: None, suggestions: ["es"]});
+        test_complete!(complete_n, bool, "n" => {consumed: true, remaining: None, suggestions: ["o"]});
+        test_complete!(complete_m, bool, "m" => {consumed: true, remaining: None, suggestions: []});
 
-            for (input, expected) in cases {
-                let stream = TokenStream::new(input);
-                let result = Parser::<()>::complete(&parser, stream);
-                assert!(result.value_consumed);
-                assert!(result.remaining.is_none());
-                assert_eq!(
-                    result.suggestions,
-                    HashSet::from_iter(expected.iter().copied().map(Cow::Borrowed))
-                );
-            }
-        }
-
-        #[test]
-        fn suggest_with_space() {
-            let parser = IntegerParser::<i16>::create(());
-            let stream = TokenStream::new("tr ");
-            let result = Parser::<()>::complete(&parser, stream);
-            assert!(result.value_consumed);
-            assert!(result.suggestions.is_empty());
-            assert!(result.remaining.is_some());
-        }
+        test_complete!(complete_consumed, bool, "fal " => {
+            consumed: true,
+            remaining: Some(None),
+            suggestions: [],
+        });
     }
 }

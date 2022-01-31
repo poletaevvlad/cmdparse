@@ -133,28 +133,7 @@ impl<'a> Token<'a> {
 }
 
 #[cfg(test)]
-pub(crate) mod token_macro {
-
-    macro_rules! token {
-        (--$text:literal $(, $mod:ident)?) => {
-            $crate::tokens::Token::from_parts (
-                $crate::tokens::TokenValue::Attribute($crate::tokens::RawLexeme::from_str($text)),
-                token!(@internal is_last $($mod)?),
-            )
-        };
-        ($text:literal $(, $mod:ident)?) => {
-            $crate::tokens::Token::from_parts (
-                $crate::tokens::TokenValue::Text($crate::tokens::RawLexeme::from_str($text)),
-                token!(@internal is_last $($mod)?),
-            )
-        };
-
-        (@internal is_last last) => {true};
-        (@internal is_last ) => {false};
-    }
-
-    pub(crate) use token;
-}
+pub(crate) mod token_macro {}
 
 #[cfg(test)]
 mod tests {

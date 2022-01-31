@@ -314,9 +314,9 @@ impl<Ctx, T: Parsable<Ctx>> Parsable<Ctx> for Option<T> {
 #[cfg(test)]
 mod tests {
     use crate::error::{ParseError, UnrecognizedToken};
-    use crate::tokens::token_macro::token;
+    use crate::testing::{test_complete, test_parse, token};
     use crate::tokens::{TokenStream, TokenValue};
-    use crate::{CompletionResult, Parsable, ParseFailure, ParseResult, Parser};
+    use crate::{CompletionResult, Parsable, ParseResult, Parser};
     use std::collections::HashSet;
 
     #[derive(PartialEq, Eq, Debug)]
@@ -353,68 +353,6 @@ mod tests {
 
     impl<Ctx> Parsable<Ctx> for MockEnum {
         type Parser = MockEnumParser;
-    }
-
-    macro_rules! test_parse {
-        ($name:ident, $type:ty, $input:literal => Ok($value:expr, $next_token:expr)) => {
-            #[test]
-            fn $name() {
-                let parser = <$type as Parsable<()>>::new_parser(());
-                let stream = TokenStream::new($input);
-                let (result, remaining) = Parser::<()>::parse(&parser, stream).unwrap();
-                assert_eq!(result, $value);
-                assert_eq!(remaining.peek().transpose().unwrap(), $next_token);
-            }
-        };
-        ($name:ident, $type:ty, $input:literal => Error($error:expr)) => {
-            #[test]
-            fn $name() {
-                let parser = <$type as Parsable<()>>::new_parser(());
-                let stream = TokenStream::new($input);
-                let error = Parser::<()>::parse(&parser, stream).unwrap_err();
-                match error {
-                    ParseFailure::Error(error) => assert_eq!(error, $error),
-                    ParseFailure::Unrecognized(unrecognized) => {
-                        panic!("expected Error, but found {:?}", unrecognized)
-                    }
-                }
-            }
-        };
-        ($name:ident, $type:ty, $input:literal => Unrecognized($token:expr, $next_token:expr)) => {
-            #[test]
-            fn $name() {
-                let parser = <$type as Parsable<()>>::new_parser(());
-                let stream = TokenStream::new($input);
-                let error = Parser::<()>::parse(&parser, stream).unwrap_err();
-                match error {
-                    ParseFailure::Error(error) => {
-                        panic!("expected Unrecognized, but found {:?}", error)
-                    }
-                    ParseFailure::Unrecognized(unrecognized) => {
-                        assert_eq!(unrecognized.token(), $token);
-                        assert_eq!(
-                            unrecognized.remaining().peek().transpose().unwrap(),
-                            $next_token
-                        );
-                    }
-                }
-            }
-        };
-    }
-
-    macro_rules! test_complete {
-        ($name:ident, $type:ty, $input:literal => { consumed: $consumed:expr, remaining: $remaining:expr, suggestions: [$($suggestion:expr),*] $(,)?}) => {
-            #[test]
-            #[allow(clippy::bool_assert_comparison)]
-            fn $name() {
-                let parser = <$type as Parsable<()>>::new_parser(());
-                let stream = TokenStream::new($input);
-                let result = parser.complete(stream);
-                assert_eq!(result.suggestions, HashSet::from([$($suggestion.into()),*]));
-                assert_eq!(result.value_consumed, $consumed);
-                assert_eq!(result.remaining.map(|input| input.peek().transpose().unwrap()), $remaining);
-            }
-        };
     }
 
     mod collection_parser {

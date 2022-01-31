@@ -139,13 +139,12 @@ impl NestingGuard {
 
 #[cfg(test)]
 mod tests {
+    use crate::testing::token;
     use std::collections::HashSet;
 
     use super::TokenStream;
-    use crate::{
-        tokens::{token_macro::token, Token, UnbalancedParenthesis},
-        CompletionResult,
-    };
+    use crate::tokens::{Token, UnbalancedParenthesis};
+    use crate::CompletionResult;
 
     fn assert_takes<'a>(stream: TokenStream<'a>, expected: Token) -> TokenStream<'a> {
         let peeked = stream.peek().unwrap().unwrap();

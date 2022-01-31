@@ -140,10 +140,10 @@ impl<'a> UnrecognizedToken<'a> {
 #[cfg(test)]
 mod tests {
     use super::ParseError;
+    use crate::testing::token;
 
     mod error_display {
         use super::*;
-        use crate::tokens::token_macro::token;
 
         #[test]
         fn invalid() {

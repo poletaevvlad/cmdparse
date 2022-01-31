@@ -1,13 +1,14 @@
-mod error;
+pub mod error;
 pub mod primitives;
 pub mod sequences;
+pub mod testing;
 pub mod tokens;
 pub mod utils;
 
 use std::borrow::Cow;
 use std::collections::HashSet;
 
-// pub use cmd_parser_derive::Parsable;
+pub use cmd_parser_derive::Parsable;
 pub use error::ParseFailure;
 use tokens::TokenStream;
 
