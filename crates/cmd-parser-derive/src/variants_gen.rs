@@ -25,9 +25,10 @@ impl<'a> TransparentVariantView<'a> {
         let ident = ctx.type_name;
         let parse_variant = gen_parse_struct(quote! { #ident::#variant_ident }, ctx, self.fields);
         quote! {
-            let parsed = (||{ #parse_variant })();
-            if ! parsed.is_unrecognized() {
-                return parsed
+            match (||{ #parse_variant })() {
+                Ok(result) => return Ok(result),
+                Err(::cmd_parser::error::ParseFailure::Unrecognized(_)) => {},
+                Err(error) => return Err(error),
             }
         }
     }
@@ -37,27 +38,33 @@ pub(crate) fn gen_parse_enum(
     codegen_ctx: &CodegenContext<'_>,
     variants: &VariantsSet<'_>,
 ) -> TokenStream {
-    let _variants_parsing = variants
+    let variants_parsing = variants
         .variant_views()
         .map(|variant| variant.gen_parse(codegen_ctx));
 
-    let _transparent_parsed = variants
+    let transparent_parsed = variants
         .transparent_variants()
         .map(|variant| variant.gen_parse(codegen_ctx));
 
     quote! {
-        todo!();
-        /*let (token, remaining) = ::cmd_parser::tokens::take_token(input);
-        match token {
-            ::cmd_parser::tokens::Token::Text(variant) => match ::std::borrow::Borrow::<str>::borrow(&variant) {
-                #(#variants_parsing)*
-                token if token.is_empty() => ::cmd_parser::ParseResult::Failed(::cmd_parser::ParseError::token_required("variant")),
-                _ => {
-                    #(#transparent_parsed)*
-                    ::cmd_parser::ParseResult::UnrecognizedVariant(variant)
+        match input.take() {
+            None => Err(::cmd_parser::error::ParseError::token_required().expected("variant").into()),
+            Some(Err(err)) => Err(err.into()),
+            Some(Ok((token, remaining))) => match token.value() {
+                ::cmd_parser::tokens::TokenValue::Attribute(_) => {
+                    Err(::cmd_parser::error::UnrecognizedToken::new(token, remaining).into())
+                }
+                ::cmd_parser::tokens::TokenValue::Text(text) => {
+                    let text = text.parse_string();
+                    match ::std::borrow::Borrow::<str>::borrow(&text) {
+                        #(#variants_parsing)*
+                       _ => {
+                            #(#transparent_parsed)*
+                            Err(::cmd_parser::error::UnrecognizedToken::new(token, remaining).into())
+                        }
+                    }
                 }
             }
-            ::cmd_parser::tokens::Token::Attribute(attr) => ::cmd_parser::ParseResult::UnrecognizedAttribute(attr, remaining),
-        }*/
+        }
     }
 }
