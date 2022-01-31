@@ -12,7 +12,7 @@ pub use cmd_parser_derive::Parsable;
 pub use error::ParseFailure;
 use tokens::TokenStream;
 
-type ParseResult<'a, T> = Result<(T, TokenStream<'a>), ParseFailure<'a>>;
+pub type ParseResult<'a, T> = Result<(T, TokenStream<'a>), ParseFailure<'a>>;
 
 #[derive(Debug)]
 pub struct CompletionResult<'a> {

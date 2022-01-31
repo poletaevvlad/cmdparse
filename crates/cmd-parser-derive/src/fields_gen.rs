@@ -28,25 +28,23 @@ impl<'a> FieldView<'a> {
             } => {
                 let var_ident = self.var_ident();
                 let parser_ident = parser.ident();
-                let unrecognized_variant = if *position == 0 {
-                    quote! {::cmd_parser::ParseResult::UnrecognizedVariant(variant)}
-                } else {
-                    quote! {::cmd_parser::ParseResult::Failed(::cmd_parser::ParseError::unknown_variant(variant))}
+                let unrecognized_variant = match *position {
+                    0 => quote! { return Err(unrecognized.into()) },
+                    _ => quote! { unrecognized },
                 };
                 let parse_ctx = ctx.parse_context_ident();
 
                 quote! {
-                    #position => match ::cmd_parser::Parser::<#parse_ctx>::parse(&self.#parser_ident, input) {
-                        ::cmd_parser::ParseResult::UnrecognizedAttribute(attr, remaining) => (attr, remaining),
-                        ::cmd_parser::ParseResult::UnrecognizedVariant(variant) => return #unrecognized_variant,
-                        ::cmd_parser::ParseResult::Failed(error) => return ::cmd_parser::ParseResult::Failed(error),
-                        ::cmd_parser::ParseResult::Parsed(result, remaining) => {
+                    #position => match input.with_nested(|input| ::cmd_parser::Parser::<#parse_ctx>::parse(&self.#parser_ident, input)) {
+                        Ok((result, remaining)) => {
                             input = remaining;
                             #var_ident = Some(result);
                             first_token = false;
                             required_index += 1;
-                            continue;
-                        },
+                            continue
+                        }
+                        Err(error @ ::cmd_parser::ParseFailure::Error(_)) => return Err(error),
+                        Err(::cmd_parser::ParseFailure::Unrecognized(unrecognized)) => #unrecognized_variant,
                     }
                 }
             }
@@ -88,19 +86,11 @@ impl<'a> FieldView<'a> {
                 let parse_ctx = ctx.parse_context_ident();
                 quote! {
                     #name => {
-                        match ::cmd_parser::Parser::<#parse_ctx>::parse(&self.#parser_ident, remaining) {
-                            ::cmd_parser::ParseResult::Parsed(result, remaining) => {
-                                input = remaining;
-                                #var_ident = Some(result);
-                            }
-                            ::cmd_parser::ParseResult::UnrecognizedAttribute(attr, _) =>
-                                return ::cmd_parser::ParseResult::Failed(::cmd_parser::ParseError::unknown_attribute(attr)),
-                            ::cmd_parser::ParseResult::UnrecognizedVariant(variant) =>
-                                return ::cmd_parser::ParseResult::Failed(::cmd_parser::ParseError::unknown_variant(variant)),
-                            ::cmd_parser::ParseResult::Failed(error) => {
-                                return ParseResult::Failed(error)
-                            }
-                        }
+                        let (result, remaining) = unexpected.remaining().with_nested(|input| {
+                            ::cmd_parser::Parser::<#parse_ctx>::parse(&self.#parser_ident, input)
+                        })?;
+                        input = remaining;
+                        #var_ident = Some(result);
                     }
                 }
             }
@@ -109,7 +99,7 @@ impl<'a> FieldView<'a> {
                 quote! {
                     #name => {
                         #var_ident = Some(#value);
-                        input = remaining;
+                        input = *unexpected.remaining();
                     }
                 }
             }
@@ -218,52 +208,57 @@ pub(crate) fn gen_parse_struct(
         let mut required_index = 0;
         let mut first_token = true;
         loop {
-            let (attr, remaining) = match required_index {
+            let unexpected = match required_index {
                 #required_parsing
-                _ => {
-                    let (token, remaining) = ::cmd_parser::tokens::take_token(input);
-                    match token {
-                        ::cmd_parser::tokens::Token::Text(_) => break,
-                        ::cmd_parser::tokens::Token::Attribute(attr) => (attr, remaining),
-                    }
+                _ => match input.take() {
+                    None | Some(Err(_)) => break,
+                    Some(Ok((token, _))) if token.value().is_text() => break,
+                    Some(Ok((token, remaining))) => ::cmd_parser::error::UnrecognizedToken::new(token, remaining),
                 }
             };
-            match std::borrow::Borrow::<str>::borrow(&attr) {
-                #optional_parsing
-                _ if required_index >= #required_count => break,
-                _ if first_token => return ::cmd_parser::ParseResult::UnrecognizedAttribute(attr, remaining),
-                _ => return ::cmd_parser::ParseResult::Failed(::cmd_parser::ParseError::unknown_attribute(attr)),
+            match unexpected.token().value() {
+                ::cmd_parser::tokens::TokenValue::Text(_) => return Err(unexpected.into()),
+                ::cmd_parser::tokens::TokenValue::Attribute(attribute) => {
+                    let attribute = attribute.parse_string();
+                    match ::std::borrow::Borrow::<str>::borrow(&attribute) {
+                        #optional_parsing
+                        _ if required_index >= #required_count => break,
+                        _ if first_token => return Err(unexpected.into()),
+                        _ => return Err(unexpected.into_error().into()),
+                    }
+                }
             }
             first_token = false;
         }
-        ::cmd_parser::ParseResult::Parsed(#result_struct, input)
+        Ok((#result_struct, input))
     }
 }
 
-pub(crate) fn gen_complete_struct(ctx: &CodegenContext, fields: &FieldsSet<'_>) -> TokenStream {
-    let mut required_complete = TokenStream::new();
-    let mut optional_complete = TokenStream::new();
-    let mut required_count: usize = 0;
-    let mut attribute_names = Vec::new();
+pub(crate) fn gen_complete_struct(_ctx: &CodegenContext, _fields: &FieldsSet<'_>) -> TokenStream {
+    // let mut required_complete = TokenStream::new();
+    // let mut optional_complete = TokenStream::new();
+    // let mut required_count: usize = 0;
+    // let mut attribute_names = Vec::new();
 
-    for field in fields.fields_views() {
-        required_complete.extend(field.gen_complete_required(ctx));
-        optional_complete.extend(field.gen_complete_optional(ctx));
-        if matches!(field, FieldView::Required { .. }) {
-            required_count += 1;
-        }
+    // for field in fields.fields_views() {
+    //     required_complete.extend(field.gen_complete_required(ctx));
+    //     optional_complete.extend(field.gen_complete_optional(ctx));
+    //     if matches!(field, FieldView::Required { .. }) {
+    //         required_count += 1;
+    //     }
 
-        match field {
-            FieldView::Optional { name, .. } | FieldView::Fixed { name, .. } => {
-                attribute_names.push(name);
-            }
-            _ => {}
-        }
-    }
-    attribute_names.sort_unstable();
+    //     match field {
+    //         FieldView::Optional { name, .. } | FieldView::Fixed { name, .. } => {
+    //             attribute_names.push(name);
+    //         }
+    //         _ => {}
+    //     }
+    // }
+    // attribute_names.sort_unstable();
 
     quote! {
-        const ATTRIBUTE_NAMES: &[&str] = &[#(#attribute_names),*];
+        todo!();
+        /*const ATTRIBUTE_NAMES: &[&str] = &[#(#attribute_names),*];
         let mut required_index = 0;
         let mut first_token = true;
         loop {
@@ -295,6 +290,6 @@ pub(crate) fn gen_complete_struct(ctx: &CodegenContext, fields: &FieldsSet<'_>) 
                 return ::cmd_parser::CompletionResult::empty();
             }
             first_token = false;
-        }
+        }*/
     }
 }

@@ -2,13 +2,13 @@
 macro_rules! token {
     (--$text:literal $(, $mod:ident)?) => {
         $crate::tokens::Token::from_parts (
-            $crate::tokens::TokenValue::Attribute($crate::tokens::RawLexeme::from_str($text)),
+            $crate::tokens::TokenValue::Attribute($crate::tokens::RawLexeme::new($text)),
             token!(@internal is_last $($mod)?),
         )
     };
     ($text:literal $(, $mod:ident)?) => {
         $crate::tokens::Token::from_parts (
-            $crate::tokens::TokenValue::Text($crate::tokens::RawLexeme::from_str($text)),
+            $crate::tokens::TokenValue::Text($crate::tokens::RawLexeme::new($text)),
             token!(@internal is_last $($mod)?),
         )
     };

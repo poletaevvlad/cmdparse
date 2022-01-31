@@ -37,16 +37,17 @@ pub(crate) fn gen_parse_enum(
     codegen_ctx: &CodegenContext<'_>,
     variants: &VariantsSet<'_>,
 ) -> TokenStream {
-    let variants_parsing = variants
+    let _variants_parsing = variants
         .variant_views()
         .map(|variant| variant.gen_parse(codegen_ctx));
 
-    let transparent_parsed = variants
+    let _transparent_parsed = variants
         .transparent_variants()
         .map(|variant| variant.gen_parse(codegen_ctx));
 
     quote! {
-        let (token, remaining) = ::cmd_parser::tokens::take_token(input);
+        todo!();
+        /*let (token, remaining) = ::cmd_parser::tokens::take_token(input);
         match token {
             ::cmd_parser::tokens::Token::Text(variant) => match ::std::borrow::Borrow::<str>::borrow(&variant) {
                 #(#variants_parsing)*
@@ -57,6 +58,6 @@ pub(crate) fn gen_parse_enum(
                 }
             }
             ::cmd_parser::tokens::Token::Attribute(attr) => ::cmd_parser::ParseResult::UnrecognizedAttribute(attr, remaining),
-        }
+        }*/
     }
 }

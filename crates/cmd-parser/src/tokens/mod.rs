@@ -13,7 +13,7 @@ pub use stream::{NestingGuard, TokenStream};
 pub struct RawLexeme<'a>(&'a str);
 
 impl<'a> RawLexeme<'a> {
-    pub(crate) fn from_str(text: &'a str) -> Self {
+    pub fn new(text: &'a str) -> Self {
         RawLexeme(text)
     }
 
@@ -104,8 +104,7 @@ pub struct Token<'a> {
 }
 
 impl<'a> Token<'a> {
-    #[cfg(test)]
-    pub(crate) fn from_parts(value: TokenValue<RawLexeme<'a>>, is_last: bool) -> Self {
+    pub fn from_parts(value: TokenValue<RawLexeme<'a>>, is_last: bool) -> Self {
         Token { value, is_last }
     }
 
@@ -118,7 +117,7 @@ impl<'a> Token<'a> {
             LexemeKind::Attribute(attr) => TokenValue::Attribute(attr),
         };
         Ok(Token {
-            value: token_value.map(RawLexeme::from_str),
+            value: token_value.map(RawLexeme::new),
             is_last: lexeme.is_last,
         })
     }
@@ -144,19 +143,19 @@ mod tests {
 
         #[test]
         fn format_simple() {
-            assert_eq!(RawLexeme::from_str("simple").to_string(), "\"simple\"");
+            assert_eq!(RawLexeme::new("simple").to_string(), "\"simple\"");
         }
 
         #[test]
         fn format_quoted() {
-            assert_eq!(RawLexeme::from_str("'quoted'").to_string(), "'quoted'");
-            assert_eq!(RawLexeme::from_str("\"quoted\"").to_string(), "\"quoted\"");
+            assert_eq!(RawLexeme::new("'quoted'").to_string(), "'quoted'");
+            assert_eq!(RawLexeme::new("\"quoted\"").to_string(), "\"quoted\"");
         }
 
         #[test]
         fn format_quoted_partial() {
-            assert_eq!(RawLexeme::from_str("'quoted").to_string(), "'quoted'");
-            assert_eq!(RawLexeme::from_str("\"quoted").to_string(), "\"quoted\"");
+            assert_eq!(RawLexeme::new("'quoted").to_string(), "'quoted'");
+            assert_eq!(RawLexeme::new("\"quoted").to_string(), "\"quoted\"");
         }
     }
 
@@ -168,7 +167,7 @@ mod tests {
             ($name:ident, $text:literal => $variant:ident($result:literal)) => {
                 #[test]
                 fn $name() {
-                    let result = RawLexeme::from_str($text).parse_string();
+                    let result = RawLexeme::new($text).parse_string();
                     assert_eq!(result, Cow::Borrowed($result));
                     assert!(matches!(result, Cow::$variant(_)));
                 }

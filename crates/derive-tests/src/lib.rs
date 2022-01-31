@@ -1,301 +1,311 @@
 #![cfg(test)]
 
-use cmd_parser::{CompletionResult, Parsable, ParseError, ParseResult, Parser};
-
-macro_rules! test_success {
-    ($name:ident, $input:expr => ($value:expr, $remaining:expr)) => {
-        #[test]
-        fn $name() {
-            let parser = TestParsable::new_parser(());
-            assert_eq!(
-                Parser::<()>::parse(&parser, $input),
-                ParseResult::Parsed($value, $remaining)
-            );
-        }
-    };
-}
-
-macro_rules! test_unrecognized_attr {
-    ($name:ident, $input:expr => ($token:expr, $remaining:expr)) => {
-        #[test]
-        fn $name() {
-            let parser = TestParsable::new_parser(());
-            assert_eq!(
-                Parser::<()>::parse(&parser, $input),
-                ParseResult::UnrecognizedAttribute($token.into(), $remaining)
-            );
-        }
-    };
-}
-
-macro_rules! test_failed {
-    ($name:ident, $input:expr => $err:expr) => {
-        #[test]
-        fn $name() {
-            let parser = TestParsable::new_parser(());
-            assert_eq!(
-                Parser::<()>::parse(&parser, $input),
-                ParseResult::Failed($err)
-            );
-        }
-    };
-}
-
-macro_rules! test_unrecognized_variant {
-    ($name:ident, $input:expr => $variant:expr) => {
-        #[test]
-        fn $name() {
-            let parser = TestParsable::new_parser(());
-            assert_eq!(
-                Parser::<()>::parse(&parser, $input),
-                ParseResult::UnrecognizedVariant($variant.into())
-            );
-        }
-    };
-}
-
-macro_rules! test_complete {
-    ($name:ident, $input:expr => [$($suggestion:literal),*]) => {
-        #[test]
-        fn $name() {
-            let parser = TestParsable::new_parser(());
-            assert_eq!(
-                Parser::<()>::complete(&parser, $input),
-                CompletionResult::Suggestions(vec![$($suggestion.into()),*])
-            );
-        }
-    };
-    ($name:ident, $input:expr => Unrecognized) => {
-        #[test]
-        fn $name() {
-            let parser = TestParsable::new_parser(());
-            assert_eq!(
-                Parser::<()>::complete(&parser, $input),
-                CompletionResult::Unrecognized
-            )
-        }
-    };
-    ($name:ident, $input:expr => Consumed($consumed:literal)) => {
-        #[test]
-        fn $name() {
-            let parser = TestParsable::new_parser(());
-            assert_eq!(
-                Parser::<()>::complete(&parser, $input),
-                CompletionResult::Consumed($consumed)
-            )
-        }
-    }
-}
+use cmd_parser::error::ParseError;
+use cmd_parser::testing::{test_parse, token};
+use cmd_parser::Parsable;
 
 mod unit_struct {
     use super::*;
 
     #[derive(Parsable, Debug, PartialEq, Eq)]
-    struct TestParsable;
+    struct Unit;
 
-    test_success!(empty, "" => (TestParsable, ""));
-    test_success!(followed_by_token, "remaining" => (TestParsable, "remaining"));
-    test_success!(followed_by_attr, "--remaining" => (TestParsable, "--remaining"));
+    test_parse!(empty, Unit, "" => Ok(Unit, None));
+    test_parse!(
+        followed_by_token, Unit,
+        "remaining" => Ok(Unit, Some(token!("remaining", last)))
+    );
+    test_parse!(
+        followed_by_attr, Unit,
+        "--remaining" => Ok(Unit, Some(token!(--"remaining", last)))
+    );
     // test_complete!(complete_empty, "" => Consumed(""));
     // test_complete!(complete_followed_by_token, "remaining" => Consumed("remaining"));
     // test_complete!(complete_followed_by_attr, "--remaining" => Consumed("--remaining"));
 }
 
-// mod newtype_struct {
-//     use super::*;
+mod newtype_struct {
 
-//     #[derive(Parsable, Debug, PartialEq, Eq)]
-//     struct TestParsable(u16);
+    use super::*;
 
-//     test_failed!(requre_token, "" => ParseError::token_required("integer"));
-//     test_failed!(parse_error, "abc" => ParseError::token_parse("abc".into(), None, "integer"));
-//     test_success!(success, "15 abc" => (TestParsable(15), "abc"));
-//     test_unrecognized_attr!(unrecognized_attr, "--attr 15 abc" => ("attr", "15 abc"));
-//     test_complete!(complere_empty_if_not_terminated, "abc" => []);
-//     test_complete!(complete_consumes_if_followed_by_ws, "15 abc" => Consumed("abc"));
-// }
+    #[derive(Parsable, Debug, PartialEq, Eq)]
+    struct Newtype(u16);
 
-// mod multiple_args {
-//     use super::*;
+    test_parse!(
+        require_token, Newtype,
+        "" => Error(ParseError::token_required().expected("integer"))
+    );
+    test_parse!(
+        parse_error, Newtype,
+        "abc" => Error(ParseError::invalid(token!("abc", last), None).expected("integer"))
+    );
+    test_parse!(
+        success, Newtype,
+        "15 abc" => Ok(Newtype(15), Some(token!("abc", last)))
+    );
+    test_parse!(
+        unrecognized_attr, Newtype,
+        "--attr 15 abc" => Unrecognized(token!(--"attr"), Some(token!("15")))
+    );
 
-//     #[derive(Debug, Parsable, PartialEq)]
-//     struct TestParsable {
-//         a: i32,
-//         b: f64,
-//     }
+    // test_complete!(complere_empty_if_not_terminated, "abc" => []);
+    // test_complete!(complete_consumes_if_followed_by_ws, "15 abc" => Consumed("abc"));
+}
 
-//     test_success!(success, "1 2 3" => (TestParsable{ a: 1, b: 2.0 }, "3"));
-//     test_complete!(complete_consumes, "1 2 3" => Consumed("3"));
-//     test_unrecognized_attr!(unrecognized_attr, "--attr 1 2 3" => ("attr", "1 2 3"));
-//     test_complete!(complete_unrecognized_attr, "--attr 1 2 3" => Unrecognized);
-//     test_failed!(attr_between_fields, "1 --attr 2 3" => ParseError::unknown_attribute("attr"));
-//     test_complete!(complete_attr_between_fields, "1 --attr 2 3" => []);
-//     test_success!(attr_after_fields, "1 2 --attr 3" => (TestParsable{ a: 1, b: 2.0 }, "--attr 3"));
-//     test_complete!(complete_attr_after_fields, "1 2 --attr 3" => Consumed("--attr 3"));
-// }
+mod multiple_args {
+    use super::*;
 
-// mod custom_ctx {
-//     use super::*;
+    #[derive(Debug, Parsable, PartialEq)]
+    struct Multiple {
+        a: i32,
+        b: f64,
+    }
 
-//     struct MyParser {
-//         multiplier: u8,
-//         u8_parser: <u8 as Parsable<u8>>::Parser,
-//     }
+    test_parse!(
+        success, Multiple,
+        "1 2 3" => Ok(Multiple { a: 1, b: 2.0 }, Some(token!("3", last)))
+    );
+    test_parse!(
+        unrecognized_attr, Multiple,
+        "--attr 1 2 3" => Unrecognized(token!(--"attr"), Some(token!("1")))
+    );
+    test_parse!(
+        attr_between_fields, Multiple,
+        "1 --attr 2 3" => Error(ParseError::unknown(token!(--"attr")))
+    );
+    test_parse!(
+        attr_after_required, Multiple,
+        "1 2 --attr 3" => Ok(Multiple { a: 1, b: 2.0 }, Some(token!(--"attr")))
+    );
+    // test_complete!(complete_attr_between_fields, "1 --attr 2 3" => []);
+    // test_success!(attr_after_fields, "1 2 --attr 3" => (TestParsable{ a: 1, b: 2.0 }, "--attr 3"));
+    // test_complete!(complete_attr_after_fields, "1 2 --attr 3" => Consumed("--attr 3"));
+}
 
-//     impl Parser<u8> for MyParser {
-//         type Value = u8;
+mod custom_ctx {
+    use super::*;
+    use cmd_parser::{tokens::TokenStream, ParseResult, Parser};
 
-//         fn create(ctx: u8) -> Self {
-//             MyParser {
-//                 multiplier: ctx,
-//                 u8_parser: <u8 as Parsable<u8>>::new_parser(ctx),
-//             }
-//         }
+    struct MyParser {
+        multiplier: u8,
+        u8_parser: <u8 as Parsable<u8>>::Parser,
+    }
 
-//         fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
-//             Parser::<u8>::parse(&self.u8_parser, input).map(|val| val * self.multiplier)
-//         }
+    impl Parser<u8> for MyParser {
+        type Value = u8;
 
-//         fn complete<'a>(&self, input: &'a str) -> cmd_parser::CompletionResult<'a> {
-//             Parser::<u8>::complete(&self.u8_parser, input)
-//         }
-//     }
+        fn create(ctx: u8) -> Self {
+            MyParser {
+                multiplier: ctx,
+                u8_parser: <u8 as Parsable<u8>>::new_parser(ctx),
+            }
+        }
 
-//     #[derive(Debug, PartialEq, Eq, Parsable)]
-//     #[cmd(ctx = "u8")]
-//     struct NewtypeCustomCtx(#[cmd(parser = "MyParser")] u8);
+        fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
+            let (value, remaining) = Parser::<u8>::parse(&self.u8_parser, input)?;
+            Ok((value * self.multiplier, remaining))
+        }
 
-//     #[test]
-//     fn parse() {
-//         let parser = NewtypeCustomCtx::new_parser(4);
-//         assert_eq!(
-//             Parser::<u8>::parse(&parser, "5 2"),
-//             ParseResult::Parsed(NewtypeCustomCtx(20), "2")
-//         );
-//     }
-// }
+        fn complete<'a>(&self, input: TokenStream<'a>) -> cmd_parser::CompletionResult<'a> {
+            Parser::<u8>::complete(&self.u8_parser, input)
+        }
+    }
 
-// mod custom_ctx_bounds {
-//     use super::*;
+    #[derive(Debug, PartialEq, Eq, Parsable)]
+    #[cmd(ctx = "u8")]
+    struct NewtypeCustomCtx(#[cmd(parser = "MyParser")] u8);
 
-//     trait CustomCtx {
-//         fn get_multiplier(&self) -> u8;
-//     }
+    #[test]
+    fn parse() {
+        let stream = TokenStream::new("5 2");
+        let parser = NewtypeCustomCtx::new_parser(4);
+        let (value, remaining) = Parser::<u8>::parse(&parser, stream).unwrap();
+        assert_eq!(value, NewtypeCustomCtx(20));
+        assert_eq!(remaining.peek().unwrap().unwrap(), token!("2", last));
+    }
+}
 
-//     struct MyParser<Ctx: CustomCtx> {
-//         multiplier: u8,
-//         u8_parser: <u8 as Parsable<Ctx>>::Parser,
-//     }
+mod custom_ctx_bounds {
+    use super::*;
+    use cmd_parser::{tokens::TokenStream, ParseResult, Parser};
 
-//     impl<Ctx: CustomCtx> Parser<Ctx> for MyParser<Ctx> {
-//         type Value = u8;
+    trait CustomCtx {
+        fn get_multiplier(&self) -> u8;
+    }
 
-//         fn create(ctx: Ctx) -> Self {
-//             MyParser {
-//                 multiplier: ctx.get_multiplier(),
-//                 u8_parser: <u8 as Parsable<Ctx>>::new_parser(ctx),
-//             }
-//         }
+    struct MyParser<Ctx: CustomCtx> {
+        multiplier: u8,
+        u8_parser: <u8 as Parsable<Ctx>>::Parser,
+    }
 
-//         fn parse<'a>(&self, input: &'a str) -> ParseResult<'a, Self::Value> {
-//             Parser::<u8>::parse(&self.u8_parser, input).map(|val| val * self.multiplier)
-//         }
+    impl<Ctx: CustomCtx> Parser<Ctx> for MyParser<Ctx> {
+        type Value = u8;
 
-//         fn complete<'a>(&self, input: &'a str) -> cmd_parser::CompletionResult<'a> {
-//             Parser::<u8>::complete(&self.u8_parser, input)
-//         }
-//     }
+        fn create(ctx: Ctx) -> Self {
+            MyParser {
+                multiplier: ctx.get_multiplier(),
+                u8_parser: <u8 as Parsable<Ctx>>::new_parser(ctx),
+            }
+        }
 
-//     #[derive(Debug, PartialEq, Eq, Parsable)]
-//     #[cmd(ctx_bounds = "CustomCtx")]
-//     struct NewtypeCustomCtx(#[cmd(parser = "MyParser<CmdParserCtx>")] u8);
+        fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
+            let (value, remaining) = Parser::<u8>::parse(&self.u8_parser, input)?;
+            Ok((value * self.multiplier, remaining))
+        }
 
-//     #[derive(Clone)]
-//     struct MockCtx;
+        fn complete<'a>(&self, input: TokenStream<'a>) -> cmd_parser::CompletionResult<'a> {
+            Parser::<u8>::complete(&self.u8_parser, input)
+        }
+    }
 
-//     impl CustomCtx for MockCtx {
-//         fn get_multiplier(&self) -> u8 {
-//             4
-//         }
-//     }
+    #[derive(Debug, PartialEq, Eq, Parsable)]
+    #[cmd(ctx_bounds = "CustomCtx")]
+    struct NewtypeCustomCtx(#[cmd(parser = "MyParser<CmdParserCtx>")] u8);
 
-//     #[test]
-//     fn parse() {
-//         let parser = NewtypeCustomCtx::new_parser(MockCtx);
-//         assert_eq!(
-//             Parser::<MockCtx>::parse(&parser, "5 2"),
-//             ParseResult::Parsed(NewtypeCustomCtx(20), "2")
-//         );
-//     }
-// }
+    #[derive(Clone)]
+    struct MockCtx;
 
-// mod some_optional {
-//     use super::*;
+    impl CustomCtx for MockCtx {
+        fn get_multiplier(&self) -> u8 {
+            4
+        }
+    }
 
-//     #[derive(Debug, PartialEq, Eq, Parsable)]
-//     struct TestParsable(
-//         u16,
-//         #[cmd(attr(opt), default = "5")] usize,
-//         #[cmd(attr(yes = "true", false = "false"))] bool,
-//     );
+    #[test]
+    fn parse() {
+        let stream = TokenStream::new("5 2");
+        let parser = NewtypeCustomCtx::new_parser(MockCtx);
+        let (value, remaining) = Parser::<MockCtx>::parse(&parser, stream).unwrap();
+        assert_eq!(value, NewtypeCustomCtx(20));
+        assert_eq!(remaining.peek().unwrap().unwrap(), token!("2", last));
+    }
+}
 
-//     test_failed!(not_enough_tokens, "" => ParseError::token_required("integer"));
-//     test_success!(all_optional_missing, "10" => (TestParsable(10, 5, false), ""));
-//     test_success!(has_uszie, "10 --opt 2 rest" => (TestParsable(10, 2, false), "rest"));
-//     test_success!(has_attr_with_value, "10 --yes rest" => (TestParsable(10, 5, true), "rest"));
-//     test_success!(has_all_fields, "10 --yes --opt 7 rest" => (TestParsable(10, 7, true), "rest"));
-//     test_success!(stops_after_required_finished, "10 --unknown --yes rest" => (TestParsable(10, 5, false), "--unknown --yes rest"));
-//     test_success!(keeps_taking_tokens, "10 --yes --unknown rest" => (TestParsable(10, 5, true), "--unknown rest"));
-//     test_unrecognized_attr!(unrecognized_attr, "--unknown 10" => ("unknown", "10"));
+mod some_optional {
+    use super::*;
 
-//     test_complete!(complete_attr_dashes_only, "--" => ["false", "opt", "yes"]);
-//     test_complete!(complete_attr_partial, "--y" => ["es"]);
-//     test_complete!(complete_attr_unknown, "--l" => Unrecognized);
-// }
+    #[derive(Debug, PartialEq, Eq, Parsable)]
+    struct WithOptional(
+        u16,
+        #[cmd(attr(opt), default = "5")] usize,
+        #[cmd(attr(yes = "true", false = "false"))] bool,
+    );
 
-// mod all_optional {
-//     use super::*;
+    test_parse!(
+        not_enough_tokens, WithOptional,
+        "" => Error(ParseError::token_required().expected("integer"))
+    );
+    test_parse!(
+        all_optional_missing, WithOptional,
+        "10" => Ok(WithOptional(10, 5, false), None)
+    );
+    test_parse!(
+        has_usize, WithOptional,
+        "10 --opt 2 rest" => Ok(WithOptional(10, 2, false), Some(token!("rest", last)))
+    );
+    test_parse!(
+        has_attr_with_value, WithOptional,
+        "10 --yes rest" => Ok(WithOptional(10, 5, true), Some(token!("rest", last)))
+    );
+    test_parse!(
+        has_all_fields, WithOptional,
+        "10 --yes --opt 7 rest" => Ok(WithOptional(10, 7, true), Some(token!("rest", last)))
+    );
+    test_parse!(
+        stops_after_required_finished, WithOptional,
+        "10 --unknown --yes rest" => Ok(WithOptional(10, 5, false), Some(token!(--"unknown")))
+    );
+    test_parse!(
+        keeps_taking_tokens, WithOptional,
+        "10 --yes --unknown rest" => Ok(WithOptional(10, 5, true), Some(token!(--"unknown")))
+    );
+    test_parse!(
+        unrecognized_attr, WithOptional,
+        "--unknown 10 rest" => Unrecognized(token!(--"unknown"), Some(token!("10")))
+    );
 
-//     #[derive(Debug, PartialEq, Eq, Parsable)]
-//     struct TestParsable {
-//         #[cmd(attr(a))]
-//         a: u16,
-//         #[cmd(attr(b))]
-//         b: u16,
-//         #[cmd(attr(c))]
-//         c: u16,
-//     }
+    // test_complete!(complete_attr_dashes_only, "--" => ["false", "opt", "yes"]);
+    // test_complete!(complete_attr_partial, "--y" => ["es"]);
+    // test_complete!(complete_attr_unknown, "--l" => Unrecognized);
+}
 
-//     test_success!(none_specified, "abc" => (TestParsable{ a: 0, b: 0, c: 0 }, "abc"));
-//     test_success!(none_specified_attr, "--unknown abc" => (TestParsable{ a: 0, b: 0, c: 0 }, "--unknown abc"));
-//     test_success!(only_one, "--a 10 abc" => (TestParsable{ a: 10, b: 0, c: 0 }, "abc"));
-//     test_success!(two_specified, "--a 10 --b 20 abc" => (TestParsable{ a: 10, b: 20, c: 0 }, "abc"));
-//     test_success!(all_specified, "--a 10 --b 20 --c 30 abc" => (TestParsable{ a: 10, b: 20, c: 30 }, "abc"));
-//     test_success!(stop_on_unknown_attr, "--a 10 --unknown --a 10" => (TestParsable{ a: 10, b: 0, c: 0 }, "--unknown --a 10"));
-//     test_complete!(complete_stop_on_unknown_attr, "--a 10 --unknown --a 10" => Consumed("--unknown --a 10"));
-// }
+mod all_optional {
+    use super::*;
 
-// mod some_default {
-//     use super::*;
+    #[derive(Debug, PartialEq, Eq, Parsable)]
+    struct AllOptional {
+        #[cmd(attr(a))]
+        a: u16,
+        #[cmd(attr(b))]
+        b: u16,
+        #[cmd(attr(c))]
+        c: u16,
+    }
 
-//     #[derive(Debug, PartialEq, Eq, Parsable)]
-//     struct TestParsable(#[cmd(default)] u8, #[cmd(default = "5")] u8, u8);
+    test_parse!(
+        none_specified, AllOptional,
+        "abc" => Ok(AllOptional { a: 0, b: 0, c: 0 }, Some(token!("abc", last)))
+    );
+    test_parse!(
+        none_specified_attr, AllOptional,
+        "--unknown abc" => Ok(AllOptional { a: 0, b: 0, c: 0 }, Some(token!(--"unknown")))
+    );
+    test_parse!(
+        only_one, AllOptional,
+        "--a 10 abc" => Ok(AllOptional { a: 10, b: 0, c: 0 }, Some(token!("abc", last)))
+    );
+    test_parse!(
+        two_specified, AllOptional,
+        "--a 10 --b 20 abc" => Ok(AllOptional { a: 10, b: 20, c: 0 }, Some(token!("abc", last)))
+    );
+    test_parse!(
+        all_specified, AllOptional,
+        "--a 10 --b 20 --c 30 abc" => Ok(AllOptional { a: 10, b: 20, c: 30 }, Some(token!("abc", last)))
+    );
+    test_parse!(
+        stop_on_unknown_attr, AllOptional,
+        "--a 10 --unknown --b 20" => Ok(AllOptional { a: 10, b: 0, c: 0 }, Some(token!(--"unknown")))
+    );
 
-//     test_success!(single_specified, "10 abc" => (TestParsable(0, 5, 10), "abc"));
-//     test_failed!(token_requied, "" => ParseError::token_required("integer"));
-//     test_unrecognized_attr!(unrecognized_attr, "--unknown abc" => ("unknown", "abc"));
-// }
+    // test_complete!(complete_stop_on_unknown_attr, "--a 10 --unknown --a 10" => Consumed("--unknown --a 10"));
+}
 
-// mod all_default {
-//     use super::*;
+mod some_default {
+    use super::*;
 
-//     #[derive(Debug, PartialEq, Eq, Parsable)]
-//     struct TestParsable(#[cmd(default)] u8, #[cmd(default = "5")] u8);
+    #[derive(Debug, PartialEq, Eq, Parsable)]
+    struct SomeDefault(#[cmd(default)] u8, #[cmd(default = "5")] u8, u8);
 
-//     test_success!(empty, "" => (TestParsable(0, 5), ""));
-//     test_success!(followed_by_token, "10 abc" => (TestParsable(0, 5), "10 abc"));
-//     test_success!(followed_by_attribute, "--unknown abc" => (TestParsable(0, 5), "--unknown abc"));
-// }
+    test_parse!(
+        single_specified, SomeDefault,
+        "10 abc" => Ok(SomeDefault(0, 5, 10), Some(token!("abc", last)))
+    );
+    test_parse!(
+        token_required, SomeDefault,
+        "" => Error(ParseError::token_required().expected("integer"))
+    );
+    test_parse!(
+        unrecognized_attr, SomeDefault,
+        "--unknown abc" => Unrecognized(token!(--"unknown"), Some(token!("abc", last)))
+    );
+}
+
+mod all_default {
+    use super::*;
+
+    #[derive(Debug, PartialEq, Eq, Parsable)]
+    struct AllDefault(#[cmd(default)] u8, #[cmd(default = "5")] u8);
+
+    test_parse!(empty, AllDefault, "" => Ok(AllDefault(0, 5), None));
+    test_parse!(
+        followed_by_token, AllDefault,
+        "remaining" => Ok(AllDefault(0, 5), Some(token!("remaining", last)))
+    );
+    test_parse!(
+        followed_by_attr, AllDefault,
+        "--remaining" => Ok(AllDefault(0, 5), Some(token!(--"remaining", last)))
+    );
+}
 
 // mod enum_simple {
 //     use super::*;

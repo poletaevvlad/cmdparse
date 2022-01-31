@@ -167,12 +167,12 @@ pub(crate) fn implementation(
             }
 
             #[allow(unreachable_code)]
-            fn parse<'a>(&self, mut input: &'a str) -> ::cmd_parser::ParseResult<'a, Self::Value> {
+            fn parse<'a>(&self, mut input: ::cmd_parser::tokens::TokenStream<'a>) -> ::cmd_parser::ParseResult<'a, Self::Value> {
                 #parse_impl
             }
 
             #[allow(unreachable_code)]
-            fn complete<'a>(&self, mut input: &'a str) -> ::cmd_parser::CompletionResult<'a> {
+            fn complete<'a>(&self, mut input: ::cmd_parser::tokens::TokenStream<'a>) -> ::cmd_parser::CompletionResult<'a> {
                 #complete_impl
             }
         }
@@ -413,9 +413,9 @@ mod tests {
                         NoFieldsParser{}
                     }
                     #[allow(unreachable_code)]
-                    fn parse<'a>(&self, mut input: &'a str) -> ::cmd_parser::ParseResult<'a, Self::Value> { parse!() }
+                    fn parse<'a>(&self, mut input: ::cmd_parser::tokens::TokenStream<'a>) -> ::cmd_parser::ParseResult<'a, Self::Value> { parse!() }
                     #[allow(unreachable_code)]
-                    fn complete<'a>(&self, mut input: &'a str) -> ::cmd_parser::CompletionResult<'a> { complete!() }
+                    fn complete<'a>(&self, mut input: ::cmd_parser::tokens::TokenStream<'a>) -> ::cmd_parser::CompletionResult<'a> { complete!() }
                 }
 
                 impl<CmdParserCtx> ::cmd_parser::Parsable<CmdParserCtx> for NoFields {
@@ -462,9 +462,9 @@ mod tests {
                         }
                     }
                     #[allow(unreachable_code)]
-                    fn parse<'a>(&self, mut input: &'a str) -> ::cmd_parser::ParseResult<'a, Self::Value> { parse!() }
+                    fn parse<'a>(&self, mut input: ::cmd_parser::tokens::TokenStream<'a>) -> ::cmd_parser::ParseResult<'a, Self::Value> { parse!() }
                     #[allow(unreachable_code)]
-                    fn complete<'a>(&self, mut input: &'a str) -> ::cmd_parser::CompletionResult<'a> { complete!() }
+                    fn complete<'a>(&self, mut input: ::cmd_parser::tokens::TokenStream<'a>) -> ::cmd_parser::CompletionResult<'a> { complete!() }
                 }
 
                 impl ::cmd_parser::Parsable<CustomCtx> for WithConcreteCtx {
@@ -515,9 +515,9 @@ mod tests {
                         }
                     }
                     #[allow(unreachable_code)]
-                    fn parse<'a>(&self, mut input: &'a str) -> ::cmd_parser::ParseResult<'a, Self::Value> { parse!() }
+                    fn parse<'a>(&self, mut input: ::cmd_parser::tokens::TokenStream<'a>) -> ::cmd_parser::ParseResult<'a, Self::Value> { parse!() }
                     #[allow(unreachable_code)]
-                    fn complete<'a>(&self, mut input: &'a str) -> ::cmd_parser::CompletionResult<'a> { complete!() }
+                    fn complete<'a>(&self, mut input: ::cmd_parser::tokens::TokenStream<'a>) -> ::cmd_parser::CompletionResult<'a> { complete!() }
                 }
 
                 impl<'a, CmdParserCtx: Send + Sync + Clone, T: Parsable<CmdParserCtx>> ::cmd_parser::Parsable<CmdParserCtx> for WithGenerics<'a, T> {
