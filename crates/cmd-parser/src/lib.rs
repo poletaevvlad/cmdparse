@@ -16,13 +16,13 @@ pub type ParseResult<'a, T> = Result<(T, TokenStream<'a>), ParseFailure<'a>>;
 
 #[derive(Debug)]
 pub struct CompletionResult<'a> {
-    remaining: Option<TokenStream<'a>>,
-    value_consumed: bool,
-    suggestions: HashSet<Cow<'static, str>>,
+    pub remaining: Option<TokenStream<'a>>,
+    pub value_consumed: bool,
+    pub suggestions: HashSet<Cow<'static, str>>,
 }
 
 impl<'a> CompletionResult<'a> {
-    fn unrecognized(previous: TokenStream<'a>) -> Self {
+    pub fn unrecognized(previous: TokenStream<'a>) -> Self {
         CompletionResult {
             remaining: Some(previous),
             value_consumed: false,
@@ -30,7 +30,7 @@ impl<'a> CompletionResult<'a> {
         }
     }
 
-    fn consumed(remaining: TokenStream<'a>) -> Self {
+    pub fn consumed(remaining: TokenStream<'a>) -> Self {
         CompletionResult {
             remaining: Some(remaining),
             value_consumed: true,
@@ -38,7 +38,7 @@ impl<'a> CompletionResult<'a> {
         }
     }
 
-    fn complete(suggestions: HashSet<Cow<'static, str>>) -> Self {
+    pub fn complete(suggestions: HashSet<Cow<'static, str>>) -> Self {
         CompletionResult {
             remaining: None,
             value_consumed: true,
@@ -46,7 +46,7 @@ impl<'a> CompletionResult<'a> {
         }
     }
 
-    fn failed() -> Self {
+    pub fn failed() -> Self {
         CompletionResult {
             remaining: None,
             value_consumed: false,

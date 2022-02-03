@@ -317,7 +317,6 @@ mod tests {
     use crate::testing::{test_complete, test_parse, token};
     use crate::tokens::{TokenStream, TokenValue};
     use crate::{CompletionResult, Parsable, ParseResult, Parser};
-    use std::collections::HashSet;
 
     #[derive(PartialEq, Eq, Debug)]
     struct MockEnum;

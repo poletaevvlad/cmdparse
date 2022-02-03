@@ -223,7 +223,6 @@ mod tests {
     use crate::testing::{test_complete, token};
     use crate::tokens::TokenStream;
     use crate::{Parsable, Parser};
-    use std::collections::HashSet;
 
     macro_rules! test_parse {
         ($name:ident, $type:ty, $text:literal => Ok($value:expr)) => {

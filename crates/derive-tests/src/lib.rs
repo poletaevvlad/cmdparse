@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 use cmd_parser::error::ParseError;
-use cmd_parser::testing::{test_parse, token};
+use cmd_parser::testing::{test_complete, test_parse, token};
 use cmd_parser::Parsable;
 
 mod unit_struct {
@@ -19,37 +19,62 @@ mod unit_struct {
         followed_by_attr, Unit,
         "--remaining" => Ok(Unit, Some(token!(--"remaining", last)))
     );
-    // test_complete!(complete_empty, "" => Consumed(""));
-    // test_complete!(complete_followed_by_token, "remaining" => Consumed("remaining"));
-    // test_complete!(complete_followed_by_attr, "--remaining" => Consumed("--remaining"));
+
+    test_complete!(complete_empty, Unit, "" => {
+        consumed: true,
+        remaining: Some(None),
+        suggestions: [],
+    });
+    test_complete!(complete_token, Unit, "remaining" => {
+        consumed: true,
+        remaining: Some(Some(token!("remaining", last))),
+        suggestions: [],
+    });
+    test_complete!(complete_attribute, Unit, "--remaining" => {
+        consumed: true,
+        remaining: Some(Some(token!(--"remaining", last))),
+        suggestions: [],
+    });
 }
 
 mod newtype_struct {
-
     use super::*;
 
     #[derive(Parsable, Debug, PartialEq, Eq)]
-    struct Newtype(u16);
+    struct Newtype(bool);
 
     test_parse!(
         require_token, Newtype,
-        "" => Error(ParseError::token_required().expected("integer"))
+        "" => Error(ParseError::token_required().expected("boolean"))
     );
     test_parse!(
         parse_error, Newtype,
-        "abc" => Error(ParseError::invalid(token!("abc", last), None).expected("integer"))
+        "abc" => Error(ParseError::invalid(token!("abc", last), None).expected("boolean"))
     );
     test_parse!(
         success, Newtype,
-        "15 abc" => Ok(Newtype(15), Some(token!("abc", last)))
+        "true abc" => Ok(Newtype(true), Some(token!("abc", last)))
     );
     test_parse!(
         unrecognized_attr, Newtype,
-        "--attr 15 abc" => Unrecognized(token!(--"attr"), Some(token!("15")))
+        "--attr false abc" => Unrecognized(token!(--"attr"), Some(token!("false")))
     );
 
-    // test_complete!(complere_empty_if_not_terminated, "abc" => []);
-    // test_complete!(complete_consumes_if_followed_by_ws, "15 abc" => Consumed("abc"));
+    test_complete!(complete_inner_not_terminated, Newtype, "fal" => {
+        consumed: true,
+        remaining: None,
+        suggestions: ["se"],
+    });
+    test_complete!(complete_consumed_followed_by_ws, Newtype, "false " => {
+        consumed: true,
+        remaining: Some(None),
+        suggestions: [],
+    });
+    test_complete!(complete_unrecognized_attr, Newtype, "--unknown false" => {
+        consumed: false,
+        remaining: Some(Some(token!(--"unknown"))),
+        suggestions: [],
+    });
 }
 
 mod multiple_args {
@@ -77,9 +102,17 @@ mod multiple_args {
         attr_after_required, Multiple,
         "1 2 --attr 3" => Ok(Multiple { a: 1, b: 2.0 }, Some(token!(--"attr")))
     );
-    // test_complete!(complete_attr_between_fields, "1 --attr 2 3" => []);
-    // test_success!(attr_after_fields, "1 2 --attr 3" => (TestParsable{ a: 1, b: 2.0 }, "--attr 3"));
-    // test_complete!(complete_attr_after_fields, "1 2 --attr 3" => Consumed("--attr 3"));
+
+    test_complete!(complete_attr_between_fields, Multiple, "1 --attr" => {
+        consumed: true,
+        remaining: None,
+        suggestions: [],
+    });
+    test_complete!(complete_attr_after_fields, Multiple, "1 2 --attr" => {
+        consumed: true,
+        remaining: Some(Some(token!(--"attr", last))),
+        suggestions: [],
+    });
 }
 
 mod custom_ctx {
@@ -224,9 +257,26 @@ mod some_optional {
         "--unknown 10 rest" => Unrecognized(token!(--"unknown"), Some(token!("10")))
     );
 
-    // test_complete!(complete_attr_dashes_only, "--" => ["false", "opt", "yes"]);
-    // test_complete!(complete_attr_partial, "--y" => ["es"]);
-    // test_complete!(complete_attr_unknown, "--l" => Unrecognized);
+    test_complete!(complete_attr_dashes_only, WithOptional, "--" => {
+        consumed: false,
+        remaining: Some(Some(token!(--"", last))),
+        suggestions: ["false", "opt", "yes"],
+    });
+    test_complete!(complete_attr_partial, WithOptional, "--y" => {
+        consumed: false,
+        remaining: Some(Some(token!(--"y", last))),
+        suggestions: ["es"],
+    });
+    test_complete!(complete_attr_partial_consumed, WithOptional, " 5 --y" => {
+        consumed: true,
+        remaining: Some(Some(token!(--"y", last))),
+        suggestions: ["es"],
+    });
+    test_complete!(complete_attr_last, WithOptional, "5 --opt 3 --fa" => {
+        consumed: true,
+        remaining: Some(Some(token!(--"fa", last))),
+        suggestions: ["lse"],
+    });
 }
 
 mod all_optional {
@@ -267,7 +317,16 @@ mod all_optional {
         "--a 10 --unknown --b 20" => Ok(AllOptional { a: 10, b: 0, c: 0 }, Some(token!(--"unknown")))
     );
 
-    // test_complete!(complete_stop_on_unknown_attr, "--a 10 --unknown --a 10" => Consumed("--unknown --a 10"));
+    test_complete!(complete_attr_dashes_only, AllOptional, "--" => {
+        consumed: true,
+        remaining: Some(Some(token!(--"", last))),
+        suggestions: ["a", "b", "c"],
+    });
+    test_complete!(complete_attr_partial, AllOptional, "--a 5 --b 10 --c" => {
+        consumed: true,
+        remaining: Some(Some(token!(--"c", last))),
+        suggestions: [],
+    });
 }
 
 mod some_default {
@@ -305,6 +364,22 @@ mod all_default {
         followed_by_attr, AllDefault,
         "--remaining" => Ok(AllDefault(0, 5), Some(token!(--"remaining", last)))
     );
+
+    test_complete!(complete_empty, AllDefault, "" => {
+        consumed: true,
+        remaining: Some(None),
+        suggestions: [],
+    });
+    test_complete!(complete_token, AllDefault, "remaining" => {
+        consumed: true,
+        remaining: Some(Some(token!("remaining", last))),
+        suggestions: [],
+    });
+    test_complete!(complete_attribute, AllDefault, "--remaining" => {
+        consumed: true,
+        remaining: Some(Some(token!(--"remaining", last))),
+        suggestions: [],
+    });
 }
 
 mod enum_simple {

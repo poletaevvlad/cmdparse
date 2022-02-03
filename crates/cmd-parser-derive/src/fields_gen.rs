@@ -61,16 +61,19 @@ impl<'a> FieldView<'a> {
                 let parser_ident = parser.ident();
 
                 quote! {
-                    #position => match ::cmd_parser::Parser::<#parse_ctx>::complete(&self.#parser_ident, input) {
-                        ::cmd_parser::CompletionResult::Consumed(remaining) => {
-                            input = remaining;
+                    #position => {
+                        let result = input.complete_nested(|input| {
+                            ::cmd_parser::Parser::<#parse_ctx>::complete(&self.#parser_ident, input)
+                        });
+                        match result.remaining {
+                            Some(remaining) => input = remaining,
+                            None => return result,
+                        }
+                        if result.value_consumed {
                             required_index += 1;
                             first_token = false;
                             continue;
                         }
-                        suggestions @ ::cmd_parser::CompletionResult::Suggestions(_) => return suggestions,
-                        ::cmd_parser::CompletionResult::Unrecognized => (),
-
                     }
                 }
             }
@@ -114,15 +117,18 @@ impl<'a> FieldView<'a> {
                 let parse_ctx = ctx.parse_context_ident();
                 quote! {
                     #name => {
-                        match ::cmd_parser::Parser::<#parse_ctx>::complete(&self.#parser_ident, ::cmd_parser::tokens::skip_ws(remaining)) {
-                            ::cmd_parser::CompletionResult::Consumed(remaining) => {
-                                input = remaining;
-                                first_token = false;
-                                continue;
-                            }
-                            suggestions @ ::cmd_parser::CompletionResult::Suggestions(_) => return suggestions,
-                            ::cmd_parser::CompletionResult::Unrecognized => return ::cmd_parser::CompletionResult::empty(),
-
+                        let result = remaining.complete_nested(|input| {
+                            ::cmd_parser::Parser::<#parse_ctx>::complete(&self.#parser_ident, input)
+                        });
+                        match result.remaining {
+                            Some(remaining) => input = remaining,
+                            None => return result,
+                        }
+                        if result.value_consumed {
+                            first_token = false;
+                            continue
+                        } else {
+                            return ::cmd_parser::CompletionResult::failed();
                         }
                     }
                 }
@@ -234,31 +240,30 @@ pub(crate) fn gen_parse_struct(
     }
 }
 
-pub(crate) fn gen_complete_struct(_ctx: &CodegenContext, _fields: &FieldsSet<'_>) -> TokenStream {
-    // let mut required_complete = TokenStream::new();
-    // let mut optional_complete = TokenStream::new();
-    // let mut required_count: usize = 0;
-    // let mut attribute_names = Vec::new();
+pub(crate) fn gen_complete_struct(ctx: &CodegenContext, fields: &FieldsSet<'_>) -> TokenStream {
+    let mut required_complete = TokenStream::new();
+    let mut optional_complete = TokenStream::new();
+    let mut required_count: usize = 0;
+    let mut attribute_names = Vec::new();
 
-    // for field in fields.fields_views() {
-    //     required_complete.extend(field.gen_complete_required(ctx));
-    //     optional_complete.extend(field.gen_complete_optional(ctx));
-    //     if matches!(field, FieldView::Required { .. }) {
-    //         required_count += 1;
-    //     }
+    for field in fields.fields_views() {
+        required_complete.extend(field.gen_complete_required(ctx));
+        optional_complete.extend(field.gen_complete_optional(ctx));
+        if matches!(field, FieldView::Required { .. }) {
+            required_count += 1;
+        }
 
-    //     match field {
-    //         FieldView::Optional { name, .. } | FieldView::Fixed { name, .. } => {
-    //             attribute_names.push(name);
-    //         }
-    //         _ => {}
-    //     }
-    // }
-    // attribute_names.sort_unstable();
+        match field {
+            FieldView::Optional { name, .. } | FieldView::Fixed { name, .. } => {
+                attribute_names.push(name);
+            }
+            _ => {}
+        }
+    }
+    attribute_names.sort_unstable();
 
     quote! {
-        todo!();
-        /*const ATTRIBUTE_NAMES: &[&str] = &[#(#attribute_names),*];
+        const ATTRIBUTE_NAMES: &[&str] = &[#(#attribute_names),*];
         let mut required_index = 0;
         let mut first_token = true;
         loop {
@@ -266,30 +271,44 @@ pub(crate) fn gen_complete_struct(_ctx: &CodegenContext, _fields: &FieldsSet<'_>
                 #required_complete
                 _ => (),
             }
-            if let Some(attribute) = input.strip_prefix("--") {
-                let (attribute, remaining) = ::cmd_parser::tokens::take_string(attribute);
-                if remaining.is_empty() {
-                    let suggestions = ::cmd_parser::tokens::complete_variants(&attribute, ATTRIBUTE_NAMES);
-                    if suggestions.is_empty() && required_index >= #required_count {
-                        return ::cmd_parser::CompletionResult::Consumed(input);
-                    } else if suggestions.is_empty() && first_token {
-                        return ::cmd_parser::CompletionResult::Unrecognized;
-                    }
-                    return ::cmd_parser::CompletionResult::Suggestions(suggestions);
-                }
 
-                match ::std::borrow::Borrow::<str>::borrow(&attribute) {
-                    #optional_complete
-                    _ if required_index >= #required_count => return ::cmd_parser::CompletionResult::Consumed(input),
-                    _ if first_token => return ::cmd_parser::CompletionResult::Unrecognized,
-                    _ => return ::cmd_parser::CompletionResult::empty(),
+            match input.take() {
+                None if required_index >= #required_count => return ::cmd_parser::CompletionResult::consumed(input),
+                None | Some(Err(_)) => return ::cmd_parser::CompletionResult::failed(),
+                Some(Ok((token, remaining))) => {
+                    return match token.value() {
+                        ::cmd_parser::tokens::TokenValue::Text(_) if required_index >= #required_count => {
+                            ::cmd_parser::CompletionResult::consumed(input)
+                        }
+                        ::cmd_parser::tokens::TokenValue::Text(_) => ::cmd_parser::CompletionResult::failed(),
+
+                        ::cmd_parser::tokens::TokenValue::Attribute(attribute) if token.is_last() => {
+                            let text = attribute.parse_string();
+                            let suggestions = ::cmd_parser::utils::complete_variants(&text, ATTRIBUTE_NAMES)
+                                .map(::std::borrow::Cow::Borrowed)
+                                .collect();
+                            ::cmd_parser::CompletionResult{
+                                value_consumed: !first_token || #required_count == 0,
+                                remaining: if first_token || required_index >= #required_count {
+                                    Some(input)
+                                } else {
+                                    None
+                                },
+                                suggestions
+                            }
+                        }
+                        ::cmd_parser::tokens::TokenValue::Attribute(attribute) => {
+                            let text = attribute.parse_string();
+                            match ::std::borrow::Borrow::<str>::borrow(&text) {
+                                #optional_complete
+                                _ if required_index >= #required_count => ::cmd_parser::CompletionResult::consumed(input),
+                                _ if first_token => ::cmd_parser::CompletionResult::unrecognized(input),
+                                _ => ::cmd_parser::CompletionResult::failed(),
+                            }
+                        }
+                    }
                 }
-            } else if required_index >= #required_count {
-                return ::cmd_parser::CompletionResult::Consumed(input);
-            } else {
-                return ::cmd_parser::CompletionResult::empty();
             }
-            first_token = false;
-        }*/
+        }
     }
 }
