@@ -220,7 +220,7 @@ impl<'a> FieldNamesAttributes<'a> {
 
 impl<'a> BuildableAttributes for FieldNamesAttributes<'a> {
     fn visit_name_value(&mut self, name_value: &syn::MetaNameValue) -> Result<(), Error> {
-        let name = get_path_string(&name_value.path)?;
+        let name = name_to_kebab_case(&get_path_string(&name_value.path)?);
         let value = syn::parse_str::<syn::Expr>(&get_name_value_string(name_value)?)
             .map_err(|error| Error::new(name_value.lit.span(), error))?;
 
@@ -228,7 +228,7 @@ impl<'a> BuildableAttributes for FieldNamesAttributes<'a> {
     }
 
     fn visit_path(&mut self, path: &syn::Path) -> Result<(), Error> {
-        let name = get_path_string(path)?;
+        let name = name_to_kebab_case(&get_path_string(path)?);
         self.push(path.span(), name, None)
     }
 }
@@ -297,6 +297,10 @@ impl BuildableAttributes for VariantAttributes {
             Err(unknown_attr_error(&name_value.path))
         }
     }
+}
+
+fn name_to_kebab_case(name: &str) -> String {
+    name.replace('_', "-")
 }
 
 #[cfg(test)]
