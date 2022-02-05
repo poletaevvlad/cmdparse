@@ -73,6 +73,8 @@ impl<'a> FieldView<'a> {
                             required_index += 1;
                             first_token = false;
                             continue;
+                        } else if first_token && matches!(input.peek(), Some(Ok(token)) if token.value().is_text()) {
+                            return result;
                         }
                     }
                 }

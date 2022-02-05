@@ -411,6 +411,22 @@ mod enum_simple {
         unrecognized_attr, Enum,
         "--unknown remaining" => Unrecognized(token!(--"unknown"), Some(token!("remaining", last)))
     );
+
+    test_complete!(complete_empty, Enum, "" => {
+        consumed: false,
+        remaining: None,
+        suggestions: [],
+    });
+    test_complete!(complete_partial_variant, Enum, "fir" => {
+        consumed: false,
+        remaining: Some(Some(token!("fir", last))),
+        suggestions: ["st"],
+    });
+    test_complete!(complete_complete_variant, Enum, "second abc" => {
+        consumed: true,
+        remaining: Some(Some(token!("abc", last))),
+        suggestions: [],
+    });
 }
 
 mod enum_ignore_aliases {
@@ -451,6 +467,32 @@ mod enum_ignore_aliases {
         cannot_parse_renamed, WithAliases,
         "renamed abc" => Unrecognized(token!("renamed"), Some(token!("abc", last)))
     );
+
+    test_complete!(complete_suggestions_normal, WithAliases, "r" => {
+        consumed: false,
+        remaining: Some(Some(token!("r", last))),
+        suggestions: ["eal"]
+    });
+    test_complete!(complete_suggestions_alias, WithAliases, "a" => {
+        consumed: false,
+        remaining: Some(Some(token!("a", last))),
+        suggestions: ["lias"]
+    });
+    test_complete!(complete_suggestions_renamed, WithAliases, "n" => {
+        consumed: false,
+        remaining: Some(Some(token!("n", last))),
+        suggestions: ["ew-name"]
+    });
+    test_complete!(complete_recognized, WithAliases, "new-name " => {
+        consumed: true,
+        remaining: Some(None),
+        suggestions: []
+    });
+    test_complete!(complete_unrecognized, WithAliases, "unknown " => {
+        consumed: false,
+        remaining: Some(Some(token!("unknown"))),
+        suggestions: []
+    });
 }
 
 mod enum_transparent {
@@ -494,4 +536,20 @@ mod enum_transparent {
         parse_variant, WithTransparent,
         "five abc" => Unrecognized(token!("five"), Some(token!("abc", last)))
     );
+
+    test_complete!(complete_number_variant, WithTransparent, "t" => {
+        consumed: false,
+        remaining: Some(Some(token!("t", last))),
+        suggestions: ["wo", "hree"],
+    });
+    test_complete!(complete_recognized, WithTransparent, "a " => {
+        consumed: true,
+        remaining: Some(None),
+        suggestions: []
+    });
+    test_complete!(complete_unrecognized, WithTransparent, "unknown " => {
+        consumed: false,
+        remaining: Some(Some(token!("unknown"))),
+        suggestions: []
+    });
 }

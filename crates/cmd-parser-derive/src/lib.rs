@@ -15,7 +15,7 @@ use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::spanned::Spanned;
 use variants::VariantsSet;
-use variants_gen::gen_parse_enum;
+use variants_gen::{gen_complete_enum, gen_parse_enum};
 
 type DeriveResult = Result<(TokenStream2, TokenStream2), syn::Error>;
 
@@ -30,7 +30,8 @@ fn derive_struct<'a>(ctx: &mut CodegenContext<'a>, data: &'a syn::DataStruct) ->
 fn derive_enum<'a>(ctx: &mut CodegenContext<'a>, data: &'a syn::DataEnum) -> DeriveResult {
     let variantset = VariantsSet::from_variants(ctx, data.variants.iter())?;
     let parse_tokens = gen_parse_enum(ctx, &variantset);
-    Ok((parse_tokens, quote! {todo!()}))
+    let complete_tokens = gen_complete_enum(ctx, &variantset);
+    Ok((parse_tokens, complete_tokens))
 }
 
 fn derive<'a>(ctx: &mut CodegenContext<'a>, input: &'a syn::DeriveInput) -> DeriveResult {
