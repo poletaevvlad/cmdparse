@@ -34,7 +34,14 @@ struct Second {
 struct Combined(First, Second);
 
 test!(
-    tuple_attributes_shared, Combined,
+    struct_attributes_shared, Combined,
+    "--" => ["attr_first"],
+    "5 --" => ["attr_first", "attr_second_1", "attr_second_2"],
+    "5 9 --" => ["attr_second_1", "attr_second_2"],
+);
+
+test!(
+    tuple_attributes_shared, (First, Second),
     "--" => ["attr_first"],
     "5 --" => ["attr_first", "attr_second_1", "attr_second_2"],
     "5 9 --" => ["attr_second_1", "attr_second_2"],

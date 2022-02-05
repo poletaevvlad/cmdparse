@@ -189,6 +189,7 @@ macro_rules! gen_parsable_tuple {
                 Ok((($param_first, $($param,)*), input))
             }
 
+            #[allow(unused_mut)]
             fn complete<'a>(&self, mut input: TokenStream<'a>) -> CompletionResult<'a> {
                 let result = input.complete_nested(|input| self.$param_first.complete(input));
                 if let Some(remaining) = result.remaining {
@@ -199,24 +200,32 @@ macro_rules! gen_parsable_tuple {
                 if !result.value_consumed {
                     return result;
                 }
+                let mut suggestions = result.suggestions;
 
                 $(
                     let result = input.complete_nested(|input| self.$param.complete(input));
+                    suggestions.extend(result.suggestions);
                     if let Some(remaining) = result.remaining {
                         input = remaining;
                     } else {
-                        return result;
+                        return $crate::CompletionResult {
+                            suggestions,
+                            ..result
+                        };
                     }
                     if !result.value_consumed {
                         return CompletionResult{
                             value_consumed: true,
                             remaining: None,
-                            ..result
+                            suggestions,
                         };
                     }
 
                  )*
-                 CompletionResult::consumed(input)
+                 $crate::CompletionResult{
+                     suggestions,
+                     ..$crate::CompletionResult::consumed(input)
+                }
             }
         }
 
