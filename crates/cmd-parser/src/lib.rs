@@ -9,6 +9,7 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 
 pub use cmd_parser_derive::Parsable;
+use error::ParseError;
 pub use error::ParseFailure;
 use tokens::TokenStream;
 
@@ -69,4 +70,35 @@ pub trait Parsable<Ctx> {
     fn new_parser(ctx: Ctx) -> Self::Parser {
         Self::Parser::create(ctx)
     }
+}
+
+fn parse_with_parser<Ctx, P: Parser<Ctx>>(input: &str, parser: P) -> Result<P::Value, ParseError> {
+    let tokens = TokenStream::new(input);
+    match parser.parse(tokens) {
+        Ok((result, remaining)) => match remaining.peek() {
+            Some(Ok(token)) => Err(ParseError::unknown(token)),
+            Some(Err(err)) => Err(err.into()),
+            None => Ok(result),
+        },
+        Err(ParseFailure::Error(err)) => Err(err),
+        Err(ParseFailure::Unrecognized(unrecognized)) => Err(unrecognized.into_error()),
+    }
+}
+
+pub fn parse_parser<Ctx, P: Parser<Ctx>>(input: &str, ctx: Ctx) -> Result<P::Value, ParseError> {
+    parse_with_parser(input, P::create(ctx))
+}
+
+pub fn parse<Ctx, T: Parsable<Ctx>>(input: &str, ctx: Ctx) -> Result<T, ParseError> {
+    parse_with_parser(input, T::new_parser(ctx))
+}
+
+pub fn complete_parser<Ctx, P: Parser<Ctx>>(input: &str, ctx: Ctx) -> HashSet<Cow<'static, str>> {
+    let tokens = TokenStream::new(input);
+    P::create(ctx).complete(tokens).suggestions
+}
+
+pub fn complete<Ctx, T: Parsable<Ctx>>(input: &str, ctx: Ctx) -> HashSet<Cow<'static, str>> {
+    let tokens = TokenStream::new(input);
+    T::new_parser(ctx).complete(tokens).suggestions
 }

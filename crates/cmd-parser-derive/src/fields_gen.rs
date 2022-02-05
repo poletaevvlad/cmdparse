@@ -65,16 +65,23 @@ impl<'a> FieldView<'a> {
                         let result = input.complete_nested(|input| {
                             ::cmd_parser::Parser::<#parse_ctx>::complete(&self.#parser_ident, input)
                         });
+                        suggestions.extend(result.suggestions);
                         match result.remaining {
                             Some(remaining) => input = remaining,
-                            None => return result,
+                            None => return ::cmd_parser::CompletionResult {
+                                suggestions,
+                                ..result
+                            },
                         }
                         if result.value_consumed {
                             required_index += 1;
                             first_token = false;
                             continue;
                         } else if first_token && matches!(input.peek(), Some(Ok(token)) if token.value().is_text()) {
-                            return result;
+                            return ::cmd_parser::CompletionResult {
+                                suggestions,
+                                ..result
+                            };
                         }
                     }
                 }
@@ -122,6 +129,7 @@ impl<'a> FieldView<'a> {
                         let result = remaining.complete_nested(|input| {
                             ::cmd_parser::Parser::<#parse_ctx>::complete(&self.#parser_ident, input)
                         });
+                        // suggestions.extend(result.suggestions);
                         match result.remaining {
                             Some(remaining) => input = remaining,
                             None => return result,
@@ -268,6 +276,8 @@ pub(crate) fn gen_complete_struct(ctx: &CodegenContext, fields: &FieldsSet<'_>) 
         const ATTRIBUTE_NAMES: &[&str] = &[#(#attribute_names),*];
         let mut required_index = 0;
         let mut first_token = true;
+        let mut suggestions: ::std::collections::HashSet<::std::borrow::Cow<'static, str>> = ::std::collections::HashSet::new();
+
         loop {
             match required_index {
                 #required_complete
@@ -286,9 +296,10 @@ pub(crate) fn gen_complete_struct(ctx: &CodegenContext, fields: &FieldsSet<'_>) 
 
                         ::cmd_parser::tokens::TokenValue::Attribute(attribute) if token.is_last() => {
                             let text = attribute.parse_string();
-                            let suggestions = ::cmd_parser::utils::complete_variants(&text, ATTRIBUTE_NAMES)
-                                .map(::std::borrow::Cow::Borrowed)
-                                .collect();
+                            suggestions.extend(
+                                ::cmd_parser::utils::complete_variants(&text, ATTRIBUTE_NAMES)
+                                    .map(::std::borrow::Cow::Borrowed)
+                            );
                             ::cmd_parser::CompletionResult{
                                 value_consumed: !first_token || #required_count == 0,
                                 remaining: if first_token || required_index >= #required_count {
