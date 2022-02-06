@@ -129,16 +129,22 @@ impl<'a> FieldView<'a> {
                         let result = remaining.complete_nested(|input| {
                             ::cmd_parser::Parser::<#parse_ctx>::complete(&self.#parser_ident, input)
                         });
-                        // suggestions.extend(result.suggestions);
+                        suggestions.extend(result.suggestions);
                         match result.remaining {
                             Some(remaining) => input = remaining,
-                            None => return result,
+                            None => return ::cmd_parser::CompletionResult {
+                                suggestions,
+                                ..result
+                            }
                         }
                         if result.value_consumed {
                             first_token = false;
                             continue
                         } else {
-                            return ::cmd_parser::CompletionResult::failed();
+                            return ::cmd_parser::CompletionResult {
+                                suggestions,
+                                ..::cmd_parser::CompletionResult::failed()
+                            }
                         }
                     }
                 }

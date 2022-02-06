@@ -99,27 +99,44 @@ impl<Ctx, C: ParsableCollection<Ctx> + Default> Parser<Ctx> for CollectionParser
 
     fn complete<'a>(&self, mut input: TokenStream<'a>) -> CompletionResult<'a> {
         let mut is_first = true;
+        let mut suggestions = HashSet::new();
         while !input.is_empty() {
             let item_result = input.complete_nested(|input| self.inner_parser.complete(input));
+            suggestions.extend(item_result.suggestions);
             if let Some(remaining) = item_result.remaining {
                 input = remaining;
             } else {
-                return item_result;
+                return CompletionResult {
+                    suggestions,
+                    ..item_result
+                };
             }
 
             if !item_result.value_consumed {
                 if is_first {
-                    return item_result;
+                    return CompletionResult {
+                        suggestions,
+                        ..item_result
+                    };
                 } else if matches!(input.peek(), Some(Ok(token)) if token.value().is_attribute()) {
-                    return CompletionResult::consumed(input);
+                    return CompletionResult {
+                        suggestions,
+                        ..CompletionResult::consumed(input)
+                    };
                 } else {
-                    return CompletionResult::failed();
+                    return CompletionResult {
+                        suggestions,
+                        ..CompletionResult::failed()
+                    };
                 }
             }
 
             is_first = false;
         }
-        CompletionResult::consumed(input)
+        CompletionResult {
+            suggestions,
+            ..CompletionResult::consumed(input)
+        }
     }
 }
 
@@ -312,7 +329,11 @@ impl<Ctx, T: Parsable<Ctx>> Parser<Ctx> for OptionParser<Ctx, T> {
     }
 
     fn complete<'a>(&self, input: TokenStream<'a>) -> CompletionResult<'a> {
-        self.inner_parser.complete(input)
+        let result = self.inner_parser.complete(input);
+        CompletionResult {
+            value_consumed: true,
+            ..result
+        }
     }
 }
 
