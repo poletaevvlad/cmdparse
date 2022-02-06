@@ -3,7 +3,6 @@ use crate::error::{ParseError, UnrecognizedToken};
 use crate::tokens::{TokenStream, TokenValue};
 use crate::utils::complete_variants;
 use std::borrow::{Borrow, Cow};
-use std::collections::HashSet;
 use std::fmt;
 use std::marker::PhantomData;
 use std::num::{IntErrorKind, ParseFloatError, ParseIntError};
@@ -12,11 +11,11 @@ use std::str::FromStr;
 fn complete_token_single(input: TokenStream<'_>) -> CompletionResult<'_> {
     match input.take() {
         Some(Ok((token, remaining))) => match token.value() {
-            TokenValue::Text(_) if token.is_last() => CompletionResult::complete(HashSet::new()),
-            TokenValue::Text(_) => CompletionResult::consumed(remaining),
-            TokenValue::Attribute(_) => CompletionResult::unrecognized(input),
+            TokenValue::Text(_) if token.is_last() => CompletionResult::new_final(true),
+            TokenValue::Text(_) => CompletionResult::new(remaining, true),
+            TokenValue::Attribute(_) => CompletionResult::new(input, false),
         },
-        Some(Err(_)) | None => CompletionResult::failed(),
+        Some(Err(_)) | None => CompletionResult::new_final(false),
     }
 }
 
@@ -198,16 +197,15 @@ impl<Ctx> Parser<Ctx> for BooleanParser {
             Some(Ok((token, remaining))) => match token.value() {
                 TokenValue::Text(text) if token.is_last() => {
                     let text = text.parse_string();
-                    CompletionResult::complete(
+                    CompletionResult::new_final(true).add_suggestions(
                         complete_variants(&text, &["false", "no", "true", "yes"])
-                            .map(Cow::Borrowed)
-                            .collect(),
+                            .map(Cow::Borrowed),
                     )
                 }
-                TokenValue::Text(_) => CompletionResult::consumed(remaining),
-                TokenValue::Attribute(_) => CompletionResult::unrecognized(input),
+                TokenValue::Text(_) => CompletionResult::new(remaining, true),
+                TokenValue::Attribute(_) => CompletionResult::new(input, false),
             },
-            Some(Err(_)) | None => CompletionResult::failed(),
+            Some(Err(_)) | None => CompletionResult::new_final(false),
         }
     }
 }

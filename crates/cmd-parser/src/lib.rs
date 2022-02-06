@@ -6,7 +6,7 @@ pub mod tokens;
 pub mod utils;
 
 use std::borrow::Cow;
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
 pub use cmd_parser_derive::Parsable;
 use error::ParseError;
@@ -19,40 +19,37 @@ pub type ParseResult<'a, T> = Result<(T, TokenStream<'a>), ParseFailure<'a>>;
 pub struct CompletionResult<'a> {
     pub remaining: Option<TokenStream<'a>>,
     pub value_consumed: bool,
-    pub suggestions: HashSet<Cow<'static, str>>,
+    pub suggestions: BTreeSet<Cow<'static, str>>,
 }
 
 impl<'a> CompletionResult<'a> {
-    pub fn unrecognized(previous: TokenStream<'a>) -> Self {
+    pub fn new_final(consumed: bool) -> Self {
         CompletionResult {
-            remaining: Some(previous),
-            value_consumed: false,
-            suggestions: HashSet::new(),
+            remaining: None,
+            value_consumed: consumed,
+            suggestions: BTreeSet::new(),
         }
     }
 
-    pub fn consumed(remaining: TokenStream<'a>) -> Self {
+    pub fn new(remaining: TokenStream<'a>, consumed: bool) -> Self {
         CompletionResult {
             remaining: Some(remaining),
-            value_consumed: true,
-            suggestions: HashSet::new(),
+            value_consumed: consumed,
+            suggestions: BTreeSet::new(),
         }
     }
 
-    pub fn complete(suggestions: HashSet<Cow<'static, str>>) -> Self {
-        CompletionResult {
-            remaining: None,
-            value_consumed: true,
-            suggestions,
-        }
+    pub fn set_consumed(mut self, consumed: bool) -> Self {
+        self.value_consumed = consumed;
+        self
     }
 
-    pub fn failed() -> Self {
-        CompletionResult {
-            remaining: None,
-            value_consumed: false,
-            suggestions: HashSet::new(),
-        }
+    pub fn add_suggestions(
+        mut self,
+        suggestions: impl IntoIterator<Item = Cow<'static, str>>,
+    ) -> Self {
+        self.suggestions.extend(suggestions.into_iter());
+        self
     }
 }
 
@@ -93,12 +90,12 @@ pub fn parse<Ctx, T: Parsable<Ctx>>(input: &str, ctx: Ctx) -> Result<T, ParseErr
     parse_with_parser(input, T::new_parser(ctx))
 }
 
-pub fn complete_parser<Ctx, P: Parser<Ctx>>(input: &str, ctx: Ctx) -> HashSet<Cow<'static, str>> {
+pub fn complete_parser<Ctx, P: Parser<Ctx>>(input: &str, ctx: Ctx) -> BTreeSet<Cow<'static, str>> {
     let tokens = TokenStream::new(input);
     P::create(ctx).complete(tokens).suggestions
 }
 
-pub fn complete<Ctx, T: Parsable<Ctx>>(input: &str, ctx: Ctx) -> HashSet<Cow<'static, str>> {
+pub fn complete<Ctx, T: Parsable<Ctx>>(input: &str, ctx: Ctx) -> BTreeSet<Cow<'static, str>> {
     let tokens = TokenStream::new(input);
     T::new_parser(ctx).complete(tokens).suggestions
 }

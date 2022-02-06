@@ -76,7 +76,7 @@ macro_rules! test_complete {
             let parser = <$type as Parsable<()>>::new_parser(());
             let stream = $crate::tokens::TokenStream::new($input);
             let result = $crate::Parser::<()>::complete(&parser, stream);
-            assert_eq!(result.suggestions, ::std::collections::HashSet::from([$($suggestion.into()),*]));
+            assert_eq!(result.suggestions, ::std::collections::BTreeSet::from([$($suggestion.into()),*]));
             assert_eq!(result.value_consumed, $consumed);
             assert_eq!(result.remaining.map(|input| input.peek().transpose().unwrap()), $remaining);
         }

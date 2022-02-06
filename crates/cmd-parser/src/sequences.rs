@@ -99,44 +99,30 @@ impl<Ctx, C: ParsableCollection<Ctx> + Default> Parser<Ctx> for CollectionParser
 
     fn complete<'a>(&self, mut input: TokenStream<'a>) -> CompletionResult<'a> {
         let mut is_first = true;
-        let mut suggestions = HashSet::new();
+        let mut suggestions = BTreeSet::new();
         while !input.is_empty() {
             let item_result = input.complete_nested(|input| self.inner_parser.complete(input));
-            suggestions.extend(item_result.suggestions);
             if let Some(remaining) = item_result.remaining {
                 input = remaining;
             } else {
-                return CompletionResult {
-                    suggestions,
-                    ..item_result
-                };
+                return item_result.add_suggestions(suggestions);
             }
 
             if !item_result.value_consumed {
-                if is_first {
-                    return CompletionResult {
-                        suggestions,
-                        ..item_result
-                    };
+                let result = if is_first {
+                    item_result
                 } else if matches!(input.peek(), Some(Ok(token)) if token.value().is_attribute()) {
-                    return CompletionResult {
-                        suggestions,
-                        ..CompletionResult::consumed(input)
-                    };
+                    CompletionResult::new(input, true).add_suggestions(item_result.suggestions)
                 } else {
-                    return CompletionResult {
-                        suggestions,
-                        ..CompletionResult::failed()
-                    };
-                }
+                    CompletionResult::new_final(false).add_suggestions(item_result.suggestions)
+                };
+                return result.add_suggestions(suggestions);
             }
 
+            suggestions.extend(item_result.suggestions);
             is_first = false;
         }
-        CompletionResult {
-            suggestions,
-            ..CompletionResult::consumed(input)
-        }
+        CompletionResult::new(input, true).add_suggestions(suggestions)
     }
 }
 
@@ -158,7 +144,7 @@ impl<Ctx, T: Default> Parser<Ctx> for DefaultValueParser<T> {
     }
 
     fn complete<'a>(&self, input: TokenStream<'a>) -> CompletionResult<'a> {
-        CompletionResult::consumed(input)
+        CompletionResult::new(input, true)
     }
 }
 
@@ -221,28 +207,17 @@ macro_rules! gen_parsable_tuple {
 
                 $(
                     let result = input.complete_nested(|input| self.$param.complete(input));
-                    suggestions.extend(result.suggestions);
                     if let Some(remaining) = result.remaining {
                         input = remaining;
                     } else {
-                        return $crate::CompletionResult {
-                            suggestions,
-                            ..result
-                        };
+                        return result.add_suggestions(suggestions);
                     }
                     if !result.value_consumed {
-                        return CompletionResult{
-                            value_consumed: true,
-                            remaining: None,
-                            suggestions,
-                        };
+                        return CompletionResult::new_final(true).add_suggestions(result.suggestions).add_suggestions(suggestions);
                     }
-
+                    suggestions.extend(result.suggestions);
                  )*
-                 $crate::CompletionResult{
-                     suggestions,
-                     ..$crate::CompletionResult::consumed(input)
-                }
+                 CompletionResult::new(input, true).add_suggestions(suggestions)
             }
         }
 
@@ -329,11 +304,7 @@ impl<Ctx, T: Parsable<Ctx>> Parser<Ctx> for OptionParser<Ctx, T> {
     }
 
     fn complete<'a>(&self, input: TokenStream<'a>) -> CompletionResult<'a> {
-        let result = self.inner_parser.complete(input);
-        CompletionResult {
-            value_consumed: true,
-            ..result
-        }
+        self.inner_parser.complete(input).set_consumed(true)
     }
 }
 

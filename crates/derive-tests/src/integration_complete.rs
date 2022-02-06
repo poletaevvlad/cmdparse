@@ -1,5 +1,5 @@
 use cmd_parser::{complete, Parsable};
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
 macro_rules! test {
     ($name:ident, $type:ty, $( $input:literal => [$($expected:literal),*] ),* $(,)?) => {
@@ -7,7 +7,7 @@ macro_rules! test {
         fn $name() {
             $(
             let result = complete::<(), $type>($input, ());
-            let expected = HashSet::from([$($expected.into()),*]);
+            let expected = BTreeSet::from([$($expected.into()),*]);
             assert_eq!(result, expected, "failed: \"{}\"", $input);
             )*
         }

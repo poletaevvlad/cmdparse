@@ -90,7 +90,7 @@ impl<'a> TokenStream<'a> {
             }
 
             if paren_depth == 0 {
-                return CompletionResult::consumed(end_stream);
+                return CompletionResult::new(end_stream, true);
             }
         }
 
@@ -140,7 +140,7 @@ impl NestingGuard {
 #[cfg(test)]
 mod tests {
     use crate::testing::token;
-    use std::collections::HashSet;
+    use std::collections::BTreeSet;
 
     use super::TokenStream;
     use crate::tokens::{Token, UnbalancedParenthesis};
@@ -234,10 +234,10 @@ mod tests {
         let stream = TokenStream::new("(first (()(second) third");
         let result = stream.complete_nested(|input| {
             assert_takes(input, token!("first"));
-            CompletionResult::complete(HashSet::from(["abc".into()]))
+            CompletionResult::new_final(true).add_suggestions(["abc".into()])
         });
         assert!(result.value_consumed);
-        assert_eq!(result.suggestions, HashSet::from(["abc".into()]));
+        assert_eq!(result.suggestions, BTreeSet::from(["abc".into()]));
         assert!(result.remaining.is_none());
     }
 }
