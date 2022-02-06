@@ -1,7 +1,5 @@
-use crate::{
-    context::CodegenContext,
-    fields::{FieldView, FieldsSet, StructType},
-};
+use crate::context::CodegenContext;
+use crate::fields::{FieldView, FieldsSet, StructType};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::collections::HashSet;
@@ -290,11 +288,11 @@ pub(crate) fn gen_complete_struct(ctx: &CodegenContext, fields: &FieldsSet<'_>) 
                 _ => (),
             }
 
-            match input.take() {
-                None if required_index >= #required_count => return ::cmd_parser::CompletionResult::consumed(input),
-                None | Some(Err(_)) => return ::cmd_parser::CompletionResult::failed(),
+            let mut result = match input.take() {
+                None if required_index >= #required_count => ::cmd_parser::CompletionResult::consumed(input),
+                None | Some(Err(_)) => ::cmd_parser::CompletionResult::failed(),
                 Some(Ok((token, remaining))) => {
-                    return match token.value() {
+                    match token.value() {
                         ::cmd_parser::tokens::TokenValue::Text(_) if required_index >= #required_count => {
                             ::cmd_parser::CompletionResult::consumed(input)
                         }
@@ -313,7 +311,7 @@ pub(crate) fn gen_complete_struct(ctx: &CodegenContext, fields: &FieldsSet<'_>) 
                                 } else {
                                     None
                                 },
-                                suggestions
+                                suggestions: ::std::collections::HashSet::new(),
                             }
                         }
                         ::cmd_parser::tokens::TokenValue::Attribute(attribute) => {
@@ -327,7 +325,9 @@ pub(crate) fn gen_complete_struct(ctx: &CodegenContext, fields: &FieldsSet<'_>) 
                         }
                     }
                 }
-            }
+            };
+            result.suggestions = suggestions;
+            return result;
         }
     }
 }

@@ -126,9 +126,40 @@ test!(
     "variant-a2 variant-b1 variant-" => ["c1", "c2"],
 );
 
+#[derive(Parsable)]
+struct VariantTuple(EnumFirst, EnumSecond, EnumThird);
+
+test!(
+    variants_tuple_struct, VariantTuple,
+    "variant-" => ["a1", "a2"],
+    "variant-a2 variant-" => ["b1", "b2"],
+    "variant-a2 variant-b1 variant-" => ["c1", "c2"],
+);
+
 test!(
     variants_option_tuple, (EnumFirst, Option<EnumSecond>, EnumThird),
     "variant-" => ["a1", "a2"],
     "variant-a2 variant-" => ["b1", "b2", "c1", "c2"],
     "variant-a2 variant-b1 variant-" => ["c1", "c2"],
+);
+
+#[derive(Parsable)]
+struct VariantOptionTuple(EnumFirst, Option<EnumSecond>, EnumThird);
+
+test!(
+    variants_option_tuple_struct, VariantOptionTuple,
+    "variant-" => ["a1", "a2"],
+    "variant-a2 variant-" => ["b1", "b2", "c1", "c2"],
+    "variant-a2 variant-b1 variant-" => ["c1", "c2"],
+);
+
+#[derive(Parsable)]
+struct OptionVariant(EnumFirst, Option<EnumSecond>);
+
+test!(
+    vec_with_option_variant_struct, Vec<OptionVariant>,
+    "variant-" => ["a1", "a2"],
+    "variant-a2 variant-" => ["b1", "b2", "a1", "a2"],
+    "variant-a2 variant-a1 variant-" => ["b1", "b2", "a1", "a2"],
+    "variant-a2 variant-a1 variant-b1 variant-" => ["a1", "a2"],
 );
