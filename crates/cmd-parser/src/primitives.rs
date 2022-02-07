@@ -5,7 +5,7 @@ use crate::utils::complete_variants;
 use std::borrow::{Borrow, Cow};
 use std::fmt;
 use std::marker::PhantomData;
-use std::num::{IntErrorKind, ParseFloatError, ParseIntError};
+use std::num::{IntErrorKind, ParseIntError};
 use std::str::FromStr;
 
 fn complete_token_single(input: TokenStream<'_>) -> CompletionResult<'_> {
@@ -102,14 +102,17 @@ where
     }
 }
 
-no_state_parser!(RealParser);
-no_state_parsable!(f32, RealParser);
-no_state_parsable!(f64, RealParser);
+no_state_parser!(FromStrParser);
+no_state_parsable!(f32, FromStrParser);
+no_state_parsable!(f64, FromStrParser);
+no_state_parsable!(std::net::Ipv4Addr, FromStrParser);
+no_state_parsable!(std::net::Ipv6Addr, FromStrParser);
+no_state_parsable!(std::net::IpAddr, FromStrParser);
+no_state_parsable!(std::net::SocketAddrV4, FromStrParser);
+no_state_parsable!(std::net::SocketAddrV6, FromStrParser);
+no_state_parsable!(std::net::SocketAddr, FromStrParser);
 
-impl<T, Ctx> Parser<Ctx> for RealParser<T>
-where
-    T: FromStr<Err = ParseFloatError>,
-{
+impl<T: FromStr, Ctx> Parser<Ctx> for FromStrParser<T> {
     type Value = T;
 
     fn create(_ctx: Ctx) -> Self {
@@ -216,7 +219,7 @@ impl<Ctx> Parsable<Ctx> for bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{IntegerParser, RealParser};
+    use super::{FromStrParser, IntegerParser};
     use crate::error::{ParseError, ParseFailure};
     use crate::testing::{test_complete, token};
     use crate::tokens::TokenStream;
@@ -316,12 +319,17 @@ mod tests {
         });
     }
 
-    mod real_parser {
+    mod from_str_parser {
+        use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+
         use super::*;
 
         #[test]
         fn debug() {
-            assert_eq!(&format!("{:?}", RealParser::<f64>::default()), "RealParser");
+            assert_eq!(
+                &format!("{:?}", FromStrParser::<f64>::default()),
+                "FromStrParser"
+            );
         }
 
         #[test]
@@ -339,9 +347,14 @@ mod tests {
             assert_eq!(remaining.peek().unwrap().unwrap(), token!("abc", last));
         }
 
-        test_parse!(parse_error, f64, "abc" => Err(ParseError::invalid(token!("abc", last), None).expected("real number")));
-        test_parse!(parse_empty, f64, "" => Err(ParseError::token_required().expected("real number")));
+        test_parse!(parse_f64_error, f64, "abc" => Err(ParseError::invalid(token!("abc", last), None).expected("real number")));
+        test_parse!(parse_f64_empty, f64, "" => Err(ParseError::token_required().expected("real number")));
         test_unrecognized_attribute!(unrecognized_attr, f32);
+
+        test_parse!(parse_ipv4, Ipv4Addr, "127.0.0.1" => Ok(Ipv4Addr::new(127, 0, 0, 1)));
+        test_parse!(parse_ipv4_generic, IpAddr, "127.0.0.1" => Ok(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))));
+        test_parse!(parse_ipv6, Ipv6Addr, "::1" => Ok(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)));
+        test_parse!(parse_ipv6_generic, IpAddr, "::1" => Ok(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1))));
     }
 
     mod string_parser {
