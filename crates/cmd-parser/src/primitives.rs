@@ -64,6 +64,19 @@ no_state_parsable!(u128, IntegerParser);
 no_state_parsable!(isize, IntegerParser);
 no_state_parsable!(usize, IntegerParser);
 
+no_state_parsable!(std::num::NonZeroI8, IntegerParser);
+no_state_parsable!(std::num::NonZeroU8, IntegerParser);
+no_state_parsable!(std::num::NonZeroI16, IntegerParser);
+no_state_parsable!(std::num::NonZeroU16, IntegerParser);
+no_state_parsable!(std::num::NonZeroI32, IntegerParser);
+no_state_parsable!(std::num::NonZeroU32, IntegerParser);
+no_state_parsable!(std::num::NonZeroI64, IntegerParser);
+no_state_parsable!(std::num::NonZeroU64, IntegerParser);
+no_state_parsable!(std::num::NonZeroI128, IntegerParser);
+no_state_parsable!(std::num::NonZeroU128, IntegerParser);
+no_state_parsable!(std::num::NonZeroIsize, IntegerParser);
+no_state_parsable!(std::num::NonZeroUsize, IntegerParser);
+
 impl<T, Ctx> Parser<Ctx> for IntegerParser<T>
 where
     T: FromStr<Err = ParseIntError>,
@@ -86,6 +99,7 @@ where
                     let message = match error.kind() {
                         IntErrorKind::PosOverflow => Some("too large"),
                         IntErrorKind::NegOverflow => Some("too small"),
+                        IntErrorKind::Zero => Some("cannot be zero"),
                         _ => None,
                     };
                     Err(ParseError::invalid(token, message.map(Cow::Borrowed))
@@ -292,6 +306,11 @@ mod tests {
         }
 
         test_parse!(parse_u8, u8, "15" => Ok(15));
+        test_parse!(
+            parse_non_zero_u8_zero, std::num::NonZeroU8,
+            "0" => Err(ParseError::invalid(token!("0", last), Some("cannot be zero".into())).expected("integer"))
+        );
+        test_parse!(parse_non_zero_u8_non_zero, std::num::NonZeroU8, "5" => Ok(std::num::NonZeroU8::new(5).unwrap()));
         test_unrecognized_attribute!(unrecognized_attr, i32);
         test_parse!(parse_invalid, u16, "abc" => Err(ParseError::invalid(token!("abc", last), None).expected("integer")));
         test_parse!(parse_too_large, u16, "999999999" => Err(ParseError::invalid(token!("999999999", last), Some("too large".into())).expected("integer")));
