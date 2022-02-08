@@ -73,7 +73,7 @@ macro_rules! test_complete {
         #[test]
         #[allow(clippy::bool_assert_comparison)]
         fn $name() {
-            let parser = <$type as Parsable<()>>::new_parser(());
+            let parser = <$type as $crate::Parsable<()>>::new_parser(());
             let stream = $crate::tokens::TokenStream::new($input);
             let result = $crate::Parser::<()>::complete(&parser, stream);
             assert_eq!(result.suggestions, ::std::collections::BTreeSet::from([$($suggestion.into()),*]));

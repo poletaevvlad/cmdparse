@@ -1,4 +1,5 @@
 pub mod error;
+pub mod paths;
 pub mod primitives;
 pub mod sequences;
 pub mod testing;

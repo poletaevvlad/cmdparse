@@ -5,3 +5,6 @@ edition = "2021"
 
 [dependencies]
 cmd-parser-derive = { path = "../cmd-parser-derive" }
+
+[dev-dependencies]
+tempdir = "0.3"
