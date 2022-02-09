@@ -1,7 +1,7 @@
-use super::{CompletionResult, Parsable, ParseResult, Parser};
 use crate::error::{ParseError, UnrecognizedToken};
 use crate::tokens::{TokenStream, TokenValue};
 use crate::utils::complete_variants;
+use crate::{CompletionResult, Parsable, ParseResult, Parser};
 use std::borrow::{Borrow, Cow};
 use std::fmt;
 use std::marker::PhantomData;

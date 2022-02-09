@@ -1,7 +1,5 @@
 pub mod error;
-pub mod paths;
-pub mod primitives;
-pub mod sequences;
+pub mod parsers;
 pub mod testing;
 pub mod tokens;
 pub mod utils;
