@@ -6,8 +6,15 @@ use std::collections::{BTreeSet, HashSet, LinkedList, VecDeque};
 use std::hash::Hash;
 use std::marker::PhantomData;
 
+/// Parse any one-dimensional collection of [`Parsable`] items
+///
+/// See [`CollectionParser`] documentation for details.
 pub trait ParsableCollection<Ctx> {
+    /// The type of a collection member. This value must be [`Parsable`] e.g. there must be a
+    /// default parser for it.
     type Item: Parsable<Ctx>;
+
+    /// Adds an item to the collection.
     fn append(&mut self, item: Self::Item);
 }
 
@@ -54,6 +61,74 @@ impl_parsable_collection! {BTreeSet<T> where T: Eq + Hash + Ord {
    }
 }}
 
+/// Parser implementation for any one-dimensional collection of items
+///
+/// `CollectionParser` sequentially parses items using their default parser and constructs an
+/// instance of a [`ParsableCollection`]. The iteration stops if any of the parsing attempts fails
+/// with an error, when the end of the token stream is reached (all tokens are consumed or either
+/// the comment or the closing parenthesis is encountered) or when the item parser fails because of
+/// an unrecognized attribute.
+///
+/// Because `CollectionParser` tries to consume as many tokens as possible it may cause
+/// difficulties with multiple collections in a sequence. Consider the issue of parsing nested
+/// collections, for example `Vec<Vec<i32>>. If the items are presented sequentially in the input
+/// stream all of the tokens are going to be consumed by the first item.
+///
+/// ```
+/// use cmd_parser::parse;
+///
+/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// let result = parse::<_, Vec<Vec<i32>>>("1 2 3 4 5", ())?;
+/// assert_eq!(result, vec![vec![1, 2, 3, 4, 5]]);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// This problem can be resolved by enclosing each of the inner collections' items with
+/// parenthesis:
+///
+/// ```
+/// # use cmd_parser::parse;
+/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// let result = parse::<_, Vec<Vec<i32>>>("(1 2 3) (4 5)", ())?;
+/// assert_eq!(result, vec![vec![1, 2, 3], vec![4, 5]]);
+/// # Ok(())
+/// # }
+/// ```
+/// # Custom collections
+///
+/// `cmd_parser` implements [`Parsable`] using `CollectionParser` as a default parser for
+/// collections from the Rust's standard library: [`Vec`], [`VecDeque`], [`LinkedList`],
+/// [`HashSet`], [`BTreeSet`].
+///
+/// It is easy to extend this list with a custom collection. To do so, one need to implement
+/// [`Default`], [`ParsableCollection`], and [`Parsable`] traits.
+///
+/// ```
+/// use cmd_parser::parsers::{CollectionParser, ParsableCollection};
+/// use cmd_parser::{parse, Parsable};
+///
+/// #[derive(Default, Debug, PartialEq, Eq)]
+/// struct MyBitArray(u128);
+///
+/// impl<Ctx> ParsableCollection<Ctx> for MyBitArray {
+///     type Item = bool;
+///
+///     fn append(&mut self, item: Self::Item) {
+///         self.0 = self.0 << 1 | (item as u128);
+///     }
+/// }
+///
+/// impl<Ctx> Parsable<Ctx> for MyBitArray {
+///     type Parser = CollectionParser<Ctx, Self>;
+/// }
+///
+/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// let result = parse::<_, MyBitArray>("true false false true true", ())?;
+/// assert_eq!(result, MyBitArray(0b10011));
+/// # Ok(())
+/// # }
+/// ```
 pub struct CollectionParser<Ctx, C: ParsableCollection<Ctx>> {
     _collection_phanton: PhantomData<C>,
     inner_parser: <C::Item as Parsable<Ctx>>::Parser,
@@ -126,6 +201,11 @@ impl<Ctx, C: ParsableCollection<Ctx> + Default> Parser<Ctx> for CollectionParser
     }
 }
 
+/// Parser implementation that always returns a default value of its generic argument
+///
+/// This parser never fails, does not consume any tokens nor recognizes any attributes.
+///
+/// `DefaultValueParser` is used for types such as [`PhantomData`] or `()`
 pub struct DefaultValueParser<T> {
     _phantom: PhantomData<T>,
 }
@@ -156,93 +236,118 @@ impl<Ctx, T> Parsable<Ctx> for PhantomData<T> {
     type Parser = DefaultValueParser<PhantomData<T>>;
 }
 
-macro_rules! gen_parsable_tuple {
-    ($parser_name:ident, $param_first:ident $($param:ident)*) => {
-        #[allow(non_snake_case)]
-        pub struct $parser_name<Ctx, $param_first: Parsable<Ctx>, $($param: Parsable<Ctx>),*> {
-            $param_first: $param_first::Parser,
-            $(
-                $param: $param::Parser,
-            )*
-        }
+/// Parser implementation for tuples of different sizes
+///
+/// Due to the limitations of Rust's type system, tuples of different sizes must have distinct
+/// parsers. The parsers for tuples for up to 16 elements are defined in this module. These types
+/// are rearely need to be used on its own due to the fact that corresponding tuples implement
+/// [`Parsable`] trait.
+///
+/// For tuple to be parsible, every type it contains must implement [`Parsable`] trait that
+/// supports compatible contexts.
+///
+/// # Examples
+/// ```
+/// use cmd_parser::parse;
+///
+/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// let value = parse::<_, (u8, i32, bool)>("10 42 false", ())?;
+/// assert_eq!(value, (10, 42, false));
+/// # Ok(())
+/// # }
+/// ```
+pub mod tuples {
+    use super::*;
 
-        impl<Ctx: Clone, $param_first: Parsable<Ctx>, $($param: Parsable<Ctx>),*> Parser<Ctx> for $parser_name<Ctx, $param_first, $($param),*> {
-            type Value = ($param_first, $($param,)*);
-
-            fn create(ctx: Ctx) -> Self {
-                $parser_name {
-                    $param_first: $param_first::new_parser(ctx.clone()),
-                    $($param: $param::new_parser(ctx.clone())),*
-                }
-            }
-
-            #[allow(non_snake_case, unused_mut)]
-            fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
-                let ($param_first, mut input) = input.with_nested(|input| self.$param_first.parse(input))?;
+    macro_rules! gen_parsable_tuple {
+        ($parser_name:ident, $param_first:ident $($param:ident)*) => {
+            /// Parser implementation of a tuple of a specific size
+            #[allow(non_snake_case)]
+            pub struct $parser_name<Ctx, $param_first: Parsable<Ctx>, $($param: Parsable<Ctx>),*> {
+                $param_first: $param_first::Parser,
                 $(
-                    let $param = match input.with_nested(|input| self.$param.parse(input)) {
-                        Ok((value, remaining)) => {
-                            input = remaining;
-                            value
-                        }
-                        Err(ParseFailure::Unrecognized(unrecognized)) => return Err(unrecognized.into_error().into()),
-                        Err(error) => return Err(error),
-                    };
+                    $param: $param::Parser,
                 )*
-                Ok((($param_first, $($param,)*), input))
             }
 
-            #[allow(unused_mut)]
-            fn complete<'a>(&self, mut input: TokenStream<'a>) -> CompletionResult<'a> {
-                let result = input.complete_nested(|input| self.$param_first.complete(input));
-                if let Some(remaining) = result.remaining {
-                    input = remaining;
-                } else {
-                    return result;
-                }
-                if !result.value_consumed {
-                    return result;
-                }
-                let mut suggestions = result.suggestions;
+            impl<Ctx: Clone, $param_first: Parsable<Ctx>, $($param: Parsable<Ctx>),*> Parser<Ctx> for $parser_name<Ctx, $param_first, $($param),*> {
+                type Value = ($param_first, $($param,)*);
 
-                $(
-                    let result = input.complete_nested(|input| self.$param.complete(input));
+                fn create(ctx: Ctx) -> Self {
+                    $parser_name {
+                        $param_first: $param_first::new_parser(ctx.clone()),
+                        $($param: $param::new_parser(ctx.clone())),*
+                    }
+                }
+
+                #[allow(non_snake_case, unused_mut)]
+                fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
+                    let ($param_first, mut input) = input.with_nested(|input| self.$param_first.parse(input))?;
+                    $(
+                        let $param = match input.with_nested(|input| self.$param.parse(input)) {
+                            Ok((value, remaining)) => {
+                                input = remaining;
+                                value
+                            }
+                            Err(ParseFailure::Unrecognized(unrecognized)) => return Err(unrecognized.into_error().into()),
+                            Err(error) => return Err(error),
+                        };
+                    )*
+                    Ok((($param_first, $($param,)*), input))
+                }
+
+                #[allow(unused_mut)]
+                fn complete<'a>(&self, mut input: TokenStream<'a>) -> CompletionResult<'a> {
+                    let result = input.complete_nested(|input| self.$param_first.complete(input));
                     if let Some(remaining) = result.remaining {
                         input = remaining;
                     } else {
-                        return result.add_suggestions(suggestions);
+                        return result;
                     }
                     if !result.value_consumed {
-                        return CompletionResult::new_final(true).add_suggestions(result.suggestions).add_suggestions(suggestions);
+                        return result;
                     }
-                    suggestions.extend(result.suggestions);
-                 )*
-                 CompletionResult::new(input, true).add_suggestions(suggestions)
+                    let mut suggestions = result.suggestions;
+
+                    $(
+                        let result = input.complete_nested(|input| self.$param.complete(input));
+                        if let Some(remaining) = result.remaining {
+                            input = remaining;
+                        } else {
+                            return result.add_suggestions(suggestions);
+                        }
+                        if !result.value_consumed {
+                            return CompletionResult::new_final(true).add_suggestions(result.suggestions).add_suggestions(suggestions);
+                        }
+                        suggestions.extend(result.suggestions);
+                     )*
+                     CompletionResult::new(input, true).add_suggestions(suggestions)
+                }
+            }
+
+            impl<Ctx: Clone, $param_first: Parsable<Ctx>, $($param: Parsable<Ctx>),*> Parsable<Ctx> for ($param_first, $($param,)*) {
+                type Parser = $parser_name<Ctx, $param_first, $($param),*>;
             }
         }
-
-        impl<Ctx: Clone, $param_first: Parsable<Ctx>, $($param: Parsable<Ctx>),*> Parsable<Ctx> for ($param_first, $($param,)*) {
-            type Parser = $parser_name<Ctx, $param_first, $($param),*>;
-        }
     }
-}
 
-gen_parsable_tuple!(TupleParser1, T1);
-gen_parsable_tuple!(TupleParser2, T1 T2);
-gen_parsable_tuple!(TupleParser3, T1 T2 T3);
-gen_parsable_tuple!(TupleParser4, T1 T2 T3 T4);
-gen_parsable_tuple!(TupleParser5, T1 T2 T3 T4 T5);
-gen_parsable_tuple!(TupleParser6, T1 T2 T3 T4 T5 T6);
-gen_parsable_tuple!(TupleParser7, T1 T2 T3 T4 T5 T6 T7);
-gen_parsable_tuple!(TupleParser8, T1 T2 T3 T4 T5 T6 T7 T8);
-gen_parsable_tuple!(TupleParser9, T1 T2 T3 T4 T5 T6 T7 T8 T9);
-gen_parsable_tuple!(TupleParser10, T1 T2 T3 T4 T5 T6 T7 T8 T9 T10);
-gen_parsable_tuple!(TupleParser11, T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11);
-gen_parsable_tuple!(TupleParser12, T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 T12);
-gen_parsable_tuple!(TupleParser13, T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 T12 T13);
-gen_parsable_tuple!(TupleParser14, T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 T12 T13 T14);
-gen_parsable_tuple!(TupleParser15, T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 T12 T13 T14 T15);
-gen_parsable_tuple!(TupleParser16, T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 T12 T13 T14 T15 T16);
+    gen_parsable_tuple!(TupleParser1, T1);
+    gen_parsable_tuple!(TupleParser2, T1 T2);
+    gen_parsable_tuple!(TupleParser3, T1 T2 T3);
+    gen_parsable_tuple!(TupleParser4, T1 T2 T3 T4);
+    gen_parsable_tuple!(TupleParser5, T1 T2 T3 T4 T5);
+    gen_parsable_tuple!(TupleParser6, T1 T2 T3 T4 T5 T6);
+    gen_parsable_tuple!(TupleParser7, T1 T2 T3 T4 T5 T6 T7);
+    gen_parsable_tuple!(TupleParser8, T1 T2 T3 T4 T5 T6 T7 T8);
+    gen_parsable_tuple!(TupleParser9, T1 T2 T3 T4 T5 T6 T7 T8 T9);
+    gen_parsable_tuple!(TupleParser10, T1 T2 T3 T4 T5 T6 T7 T8 T9 T10);
+    gen_parsable_tuple!(TupleParser11, T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11);
+    gen_parsable_tuple!(TupleParser12, T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 T12);
+    gen_parsable_tuple!(TupleParser13, T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 T12 T13);
+    gen_parsable_tuple!(TupleParser14, T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 T12 T13 T14);
+    gen_parsable_tuple!(TupleParser15, T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 T12 T13 T14 T15);
+    gen_parsable_tuple!(TupleParser16, T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 T12 T13 T14 T15 T16);
+}
 
 pub struct BoxParser<Ctx, T: Parsable<Ctx>> {
     inner_parser: T::Parser,
@@ -272,6 +377,14 @@ impl<Ctx, T: Parsable<Ctx>> Parsable<Ctx> for Box<T> {
     type Parser = BoxParser<Ctx, T>;
 }
 
+/// Parser implementation for [`Option<T>`]
+///
+/// This parser calls delegates the parsing and completion to the default parser of its generic
+/// parameter type and returns `Some` if the parsing succeded, `None` if the inner parser reported
+/// an unrecognized attribute or if the token stream is empty. If the inner parser fails due to an
+/// error, this parser fails also.
+///
+/// When performing completion, the value is always considered to be consumed.
 pub struct OptionParser<Ctx, T: Parsable<Ctx>> {
     inner_parser: T::Parser,
 }

@@ -24,6 +24,12 @@ fn reduce_dir_contents<T>(path: &Path, initial: T, reducer: impl Fn(T, &str) -> 
     value
 }
 
+/// Parser implementation for [`PathBuf`]s with support for directory item completion
+///
+/// This parser consumes exactly one token and doesn't recognize any attributes. The contents of
+/// the token are transformed into a [`PathBuf`]. When performing completion this parser enumerates
+/// the directory at the given path and suggests completions that would point to existing directory
+/// items.
 pub struct PathParser;
 
 impl<Ctx> Parser<Ctx> for PathParser {

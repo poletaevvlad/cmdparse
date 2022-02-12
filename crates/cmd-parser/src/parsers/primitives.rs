@@ -19,29 +19,6 @@ fn complete_token_single(input: TokenStream<'_>) -> CompletionResult<'_> {
     }
 }
 
-macro_rules! no_state_parser {
-    ($name:ident) => {
-        #[derive(Clone, Copy)]
-        pub struct $name<T> {
-            _phantom: PhantomData<T>,
-        }
-
-        impl<T> fmt::Debug for $name<T> {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.debug_struct(stringify!($name)).finish()
-            }
-        }
-
-        impl<T> Default for $name<T> {
-            fn default() -> Self {
-                $name {
-                    _phantom: Default::default(),
-                }
-            }
-        }
-    };
-}
-
 macro_rules! no_state_parsable {
     ($type:ty, $parser:ident) => {
         impl<Ctx> Parsable<Ctx> for $type {
@@ -50,7 +27,52 @@ macro_rules! no_state_parsable {
     };
 }
 
-no_state_parser!(IntegerParser);
+/// Parser implementation for integral types ([`i8`]..[`i128`], [`isize`], [`u8`]..[`u128`],
+/// [`usize`], non-zero variants)
+///
+/// More specifically, this parser can be used to parse values of any type that implements
+/// [`FromStr`] trait with an error type [`ParseIntError`]. This parser consumes exactly one token
+/// on parsing and completion and doesn't yield and suggestions. It also does not recognize any
+/// attributes.
+///
+/// The implementation is similar to [`FromStrParser`] but it provides a special error messages for
+/// overflow and underflow errors as well as for parsed zero with types that disallow it.
+///
+/// # Example
+/// ```
+/// use cmd_parser::parse;
+///
+/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// let value = parse::<_, i32>("15", ());
+/// assert_eq!(value, Ok(15));
+///
+/// let failure = parse::<_, u8>("300", ());
+/// assert_eq!(
+///     failure.map_err(|err| err.to_string()),
+///     Err(r#"cannot parse "300" (too large), expected integer"#.to_string()),
+/// );
+/// # Ok(())
+/// # }
+/// ```
+#[derive(Clone, Copy)]
+pub struct IntegerParser<T> {
+    _phantom: PhantomData<T>,
+}
+
+impl<T> fmt::Debug for IntegerParser<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("IntegerParser").finish()
+    }
+}
+
+impl<T> Default for IntegerParser<T> {
+    fn default() -> Self {
+        Self {
+            _phantom: Default::default(),
+        }
+    }
+}
+
 no_state_parsable!(i8, IntegerParser);
 no_state_parsable!(u8, IntegerParser);
 no_state_parsable!(i16, IntegerParser);
@@ -116,7 +138,76 @@ where
     }
 }
 
-no_state_parser!(FromStrParser);
+/// Generic parser implementation for any type that implements [`FromStr`] trait
+///
+/// This parser consumes exactly one token and parses it using the target type's [`FromStr`]
+/// implementation. Note, that on failure, the error value is discarded. `FromStrParser` does not
+/// recognize any attributes and does not yield any completion suggestions.
+///
+/// Note that there is no blanket implementation of [`Parsable`] that uses this parser
+/// implementation. If you want to use this implementation for your custom type you must either
+/// implement [`Parsable`] for it or specify this parser explicitly when performing parsing or
+/// completion.
+///
+/// The implementation is similar to [`IntegerParser`] with the only difference being more specific
+/// error handling by the [`IntegerParser`] parser implementation.
+///
+/// # Example
+///
+/// The following example demonstrates how to use `FromStrParser` for custom types that implement
+/// [`FromStr`]:
+///
+/// ```
+/// use cmd_parser::parsers::FromStrParser;
+/// use cmd_parser::{parse, Parsable};
+/// use std::str::FromStr;
+///
+/// #[derive(Debug, PartialEq, Eq, Copy, Clone)]
+/// enum MyBool {
+///     Yes,
+///     No,
+/// }
+///
+/// impl FromStr for MyBool {
+///     type Err = (); // the error type is discarded by the parser
+///
+///     fn from_str(s: &str) -> Result<Self, Self::Err> {
+///         match s {
+///             "yes" => Ok(MyBool::Yes),
+///             "no" => Ok(MyBool::No),
+///             _ => Err(()),
+///         }
+///     }
+/// }
+///
+/// impl<Ctx> Parsable<Ctx> for MyBool {
+///     type Parser = FromStrParser<Self>;
+/// }
+///
+/// # fn main() {
+/// assert_eq!(parse::<_, MyBool>("yes", ()), Ok(MyBool::Yes));
+/// assert_eq!(parse::<_, MyBool>("no", ()), Ok(MyBool::No));
+/// # }
+/// ```
+#[derive(Clone, Copy)]
+pub struct FromStrParser<T> {
+    _phantom: PhantomData<T>,
+}
+
+impl<T> fmt::Debug for FromStrParser<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FromStrParser").finish()
+    }
+}
+
+impl<T> Default for FromStrParser<T> {
+    fn default() -> Self {
+        FromStrParser {
+            _phantom: Default::default(),
+        }
+    }
+}
+
 no_state_parsable!(f32, FromStrParser);
 no_state_parsable!(f64, FromStrParser);
 no_state_parsable!(std::net::Ipv4Addr, FromStrParser);
@@ -154,6 +245,24 @@ impl<T: FromStr, Ctx> Parser<Ctx> for FromStrParser<T> {
     }
 }
 
+/// Parser implementation for owned [`String`]s
+///
+/// This parser consumes exactly one token, does not recognize any attributes and does not yield
+/// any completion suggestions.
+///
+/// # Example
+/// ```
+/// use cmd_parser::parse;
+///
+/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// assert_eq!(parse::<_, String>("token", ())?, "token".to_string());
+/// assert_eq!(
+///     parse::<_, String>("'multiple words'", ())?,
+///     "multiple words".to_string()
+/// );
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Default)]
 pub struct StringParser;
 
@@ -184,6 +293,27 @@ impl<Ctx> Parsable<Ctx> for String {
     type Parser = StringParser;
 }
 
+/// Parser implementation for [`bool`]ean values
+///
+/// This parser consumes exactly one token and does not recognize any attributes. At allows the
+/// following input tokens:
+///
+/// | Parsing result | Recognized tokens       |
+/// |----------------|-------------------------|
+/// | [`true`]       | `true`, `t`, `yes`, `y` |
+/// | [`false`]      | `false`, `f`, `no`, `n` |
+///
+/// # Example
+/// ```
+/// use cmd_parser::{complete, parse};
+/// use std::collections::BTreeSet;
+///
+/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// assert_eq!(parse::<_, bool>("false", ())?, false);
+/// assert_eq!(complete::<_, bool>("tr", ()), BTreeSet::from(["ue".into()]));
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Default)]
 pub struct BooleanParser;
 
