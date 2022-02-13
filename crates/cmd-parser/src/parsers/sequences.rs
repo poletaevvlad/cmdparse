@@ -1,5 +1,5 @@
 use crate::error::ParseError;
-use crate::tokens::{TokenStream, TokenValue};
+use crate::tokens::{Token, TokenStream};
 use crate::{CompletionResult, Parsable, ParseFailure, ParseResult, Parser};
 use std::cmp::Ord;
 use std::collections::{BTreeSet, HashSet, LinkedList, VecDeque};
@@ -161,14 +161,10 @@ impl<Ctx, C: ParsableCollection<Ctx> + Default, P: Parser<Ctx, Value = C::Item>>
                 Err(unrecognized @ ParseFailure::Unrecognized(_)) if is_first => {
                     return Err(unrecognized)
                 }
-                Err(ParseFailure::Unrecognized(unrecognized)) => {
-                    match unrecognized.token().value() {
-                        TokenValue::Attribute(_) => break,
-                        TokenValue::Text(_) => {
-                            return Err(ParseError::unknown(unrecognized.token()).into())
-                        }
-                    }
-                }
+                Err(ParseFailure::Unrecognized(unrecognized)) => match unrecognized.token() {
+                    Token::Attribute(_) => break,
+                    Token::Text(_) => return Err(ParseError::unknown(unrecognized.token()).into()),
+                },
             }
             is_first = false;
         }
@@ -189,7 +185,7 @@ impl<Ctx, C: ParsableCollection<Ctx> + Default, P: Parser<Ctx, Value = C::Item>>
             if !item_result.value_consumed {
                 let result = if is_first {
                     item_result
-                } else if matches!(input.peek(), Some(Ok(token)) if token.value().is_attribute()) {
+                } else if matches!(input.peek(), Some(Ok(token)) if token.is_attribute()) {
                     CompletionResult::new(input, true).add_suggestions(item_result.suggestions)
                 } else {
                     CompletionResult::new_final(false).add_suggestions(item_result.suggestions)
@@ -383,7 +379,7 @@ impl<Ctx, T: Parser<Ctx>> Parser<Ctx> for OptionParser<Ctx, T> {
                 Ok((value, remaining)) => Ok((Some(value), remaining)),
                 Err(error @ ParseFailure::Error(_)) => Err(error),
                 Err(ParseFailure::Unrecognized(unrecognized)) => {
-                    if let TokenValue::Attribute(_) = unrecognized.token().value() {
+                    if let Token::Attribute(_) = unrecognized.token() {
                         Ok((None, input))
                     } else {
                         Err(unrecognized.into())
@@ -560,7 +556,7 @@ impl<Ctx, T: Parsable<Ctx>> Parsable<Ctx> for Box<T> {
 mod tests {
     use crate::error::{ParseError, UnrecognizedToken};
     use crate::testing::{test_complete, test_parse, token};
-    use crate::tokens::{TokenStream, TokenValue};
+    use crate::tokens::{Token, TokenStream};
     use crate::{CompletionResult, Parsable, ParseResult, Parser};
 
     #[derive(PartialEq, Eq, Debug)]
@@ -577,8 +573,8 @@ mod tests {
 
         fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
             let (token, remaining) = input.take().ok_or_else(ParseError::token_required)??;
-            match token.value() {
-                TokenValue::Text(text) => {
+            match token {
+                Token::Text(text) => {
                     let text = text.parse_string();
                     if &text == "variant" {
                         Ok((MockEnum, remaining))
@@ -586,7 +582,7 @@ mod tests {
                         Err(UnrecognizedToken::new(token, remaining).into())
                     }
                 }
-                TokenValue::Attribute(_) => Err(UnrecognizedToken::new(token, remaining).into()),
+                Token::Attribute(_) => Err(UnrecognizedToken::new(token, remaining).into()),
             }
         }
 
@@ -666,7 +662,7 @@ mod tests {
 
         test_parse!(
             returns_unrecognized_variant_if_first_is_unrecognized, Vec<MockEnum>,
-            "unknown variant" => Unrecognized(token!("unknown"), Some(token!("variant", last)))
+            "unknown variant" => Unrecognized(token!("unknown"), Some(token!("variant")))
         );
         test_parse!(
             fails_if_first_is_unrecognized_in_parenthesis, Vec<Vec<MockEnum>>,
@@ -674,7 +670,7 @@ mod tests {
         );
         test_parse!(
             fails_if_variant_is_unrecognized, Vec<MockEnum>,
-            "variant unknown" => Error(ParseError::unknown(token!("unknown", last)))
+            "variant unknown" => Error(ParseError::unknown(token!("unknown")))
         );
 
         test_complete!(complete_first, Vec<bool>, "tr" => {
@@ -725,11 +721,11 @@ mod tests {
 
         test_parse!(
             parse_tuple, (u8, (u16, bool), (i32, i32, i32), (bool,)),
-            "1 2 true 4 5 6 false remaining" => Ok((1, (2, true), (4, 5, 6), (false,)), Some(token!("remaining", last)))
+            "1 2 true 4 5 6 false remaining" => Ok((1, (2, true), (4, 5, 6), (false,)), Some(token!("remaining")))
         );
         test_parse!(
             parse_tuple_parens, (u8, (u16, bool), (i32, i32, i32), (bool,)),
-            "1 (2 true) (4 5 6) (false) remaining" => Ok((1, (2, true), (4, 5, 6), (false,)), Some(token!("remaining", last)))
+            "1 (2 true) (4 5 6) (false) remaining" => Ok((1, (2, true), (4, 5, 6), (false,)), Some(token!("remaining")))
         );
         test_parse!(
             too_few_tokens, (u8, (u8, u8)),
@@ -741,23 +737,23 @@ mod tests {
         );
         test_parse!(
             invalid_token, (u8, u8),
-            "5 abc" => Error(ParseError::invalid(token!("abc", last), None).expected("integer"))
+            "5 abc" => Error(ParseError::invalid(token!("abc"), None).expected("integer"))
         );
         test_parse!(
             unrecognized_if_starts_with_unknown_attribute, (u8, u8),
-            "--unknown 5" => Unrecognized(token!(--"unknown"), Some(token!("5", last)))
+            "--unknown 5" => Unrecognized(token!(--"unknown"), Some(token!("5")))
         );
         test_parse!(
             error_if_contains_unknown_attribute, (u8, u8),
-            "1 --unknown" => Error(ParseError::unknown(token!(--"unknown", last)))
+            "1 --unknown" => Error(ParseError::unknown(token!(--"unknown")))
         );
         test_parse!(
             vec_of_tuples, Vec<((u8, i16), bool)>,
-            "1 2 true 4 5 false --unknown" => Ok(vec![((1, 2), true), ((4, 5), false)], Some(token!(--"unknown", last)))
+            "1 2 true 4 5 false --unknown" => Ok(vec![((1, 2), true), ((4, 5), false)], Some(token!(--"unknown")))
         );
         test_parse!(
             returns_unrecognized_variant_if_first_is_unrecognized, (MockEnum, MockEnum),
-            "unknown variant" => Unrecognized(token!("unknown"), Some(token!("variant", last)))
+            "unknown variant" => Unrecognized(token!("unknown"), Some(token!("variant")))
         );
         test_parse!(
             fails_if_variant_is_unrecognized, (MockEnum, MockEnum),
@@ -771,7 +767,7 @@ mod tests {
         });
         test_complete!(complete_consumed, (u8, (bool, u8)), "5 false 4 6" => {
             consumed: true,
-            remaining: Some(Some(token!("6", last))),
+            remaining: Some(Some(token!("6"))),
             suggestions: [],
         });
         test_complete!(complete_unexpected_attr, (u8, (bool, u8)), "5 false --unknown 6" => {
@@ -791,7 +787,7 @@ mod tests {
 
         test_parse!(
             parse, Box<bool>,
-            "true 10" => Ok(Box::new(true), Some(token!("10", last)))
+            "true 10" => Ok(Box::new(true), Some(token!("10")))
         );
         test_complete!(completion, Box<bool>, "tr" => {
             consumed: true,
@@ -805,7 +801,7 @@ mod tests {
 
         test_parse!(
             parse_some, Option<bool>,
-            "true remaining" => Ok(Some(true), Some(token!("remaining", last)))
+            "true remaining" => Ok(Some(true), Some(token!("remaining")))
         );
         test_parse!(
             parse_none_empty, Option<bool>,
@@ -813,7 +809,7 @@ mod tests {
         );
         test_parse!(
             parse_none_on_unknown_attribute, Option<bool>,
-            "--unknown" => Ok(None, Some(token!(--"unknown", last)))
+            "--unknown" => Ok(None, Some(token!(--"unknown")))
         );
 
         test_complete!(complete, Option<bool>, "tr" => {
@@ -838,7 +834,7 @@ mod tests {
         );
         test_parse!(
             tuple_of_options_unknown_attr, Vec<(bool, Option<bool>)>,
-            "true false true --unknown" => Ok(vec![(true, Some(false)), (true, None)], Some(token!(--"unknown", last)))
+            "true false true --unknown" => Ok(vec![(true, Some(false)), (true, None)], Some(token!(--"unknown")))
         );
     }
 
@@ -848,11 +844,11 @@ mod tests {
 
         test_parse!(
             parse_union, (),
-            "any" => Ok((), Some(token!("any", last)))
+            "any" => Ok((), Some(token!("any")))
         );
         test_parse!(
             parse_phantom_data, PhantomData<u8>,
-            "any" => Ok(PhantomData, Some(token!("any", last)))
+            "any" => Ok(PhantomData, Some(token!("any")))
         );
     }
 }

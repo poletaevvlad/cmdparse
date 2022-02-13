@@ -1,4 +1,4 @@
-use super::lexing::{skip_ws, take_lexeme, Lexeme, LexemeKind};
+use super::lexing::{skip_ws, take_lexeme, Lexeme};
 use super::Token;
 use crate::error::{ParseError, UnbalancedParenthesis};
 use crate::{CompletionResult, ParseFailure, ParseResult};
@@ -6,6 +6,7 @@ use crate::{CompletionResult, ParseFailure, ParseResult};
 #[derive(Debug, Clone, Copy)]
 pub struct TokenStream<'a> {
     remaining: &'a str,
+    all_consumed: bool,
     next_lexeme: Option<Lexeme<'a>>,
 }
 
@@ -13,6 +14,7 @@ impl<'a> TokenStream<'a> {
     pub fn new(input: &'a str) -> Self {
         let (next_lexeme, remaining) = take_lexeme(skip_ws(input));
         TokenStream {
+            all_consumed: input.is_empty(),
             remaining,
             next_lexeme,
         }
@@ -22,9 +24,14 @@ impl<'a> TokenStream<'a> {
         self.peek().is_none()
     }
 
+    pub fn is_all_consumed(&self) -> bool {
+        self.all_consumed
+    }
+
     fn advance(&self) -> TokenStream<'a> {
-        let (next_lexeme, remaining) = take_lexeme(self.remaining);
+        let (next_lexeme, remaining) = take_lexeme(skip_ws(self.remaining));
         TokenStream {
+            all_consumed: self.remaining.is_empty(),
             remaining,
             next_lexeme,
         }
@@ -32,7 +39,7 @@ impl<'a> TokenStream<'a> {
 
     pub fn peek(&self) -> Option<Result<Token<'a>, UnbalancedParenthesis>> {
         match self.next_lexeme {
-            Some(lexeme) if matches!(lexeme.kind, LexemeKind::ClosingParen) => None,
+            Some(Lexeme::ClosingParen) => None,
             Some(lexeme) => Some(Token::from_lexeme(lexeme)),
             None => None,
         }
@@ -77,12 +84,8 @@ impl<'a> TokenStream<'a> {
             let mut paren_depth = 1;
             while paren_depth > 0 {
                 match end_stream.next_lexeme {
-                    Some(lexeme) if matches!(lexeme.kind, LexemeKind::OpeningParen) => {
-                        paren_depth += 1;
-                    }
-                    Some(lexeme) if matches!(lexeme.kind, LexemeKind::ClosingParen) => {
-                        paren_depth -= 1;
-                    }
+                    Some(Lexeme::OpeningParen) => paren_depth += 1,
+                    Some(Lexeme::ClosingParen) => paren_depth -= 1,
                     Some(_) => (),
                     None => break,
                 }
@@ -98,11 +101,10 @@ impl<'a> TokenStream<'a> {
     }
 
     pub fn enter_nested(&self) -> (NestingGuard, TokenStream<'a>) {
-        match self.next_lexeme {
-            Some(lexeme) if matches!(lexeme.kind, LexemeKind::OpeningParen) => {
-                (NestingGuard { has_parens: true }, self.advance())
-            }
-            Some(_) | None => (NestingGuard { has_parens: false }, *self),
+        if let Some(Lexeme::OpeningParen) = self.next_lexeme {
+            (NestingGuard { has_parens: true }, self.advance())
+        } else {
+            (NestingGuard { has_parens: false }, *self)
         }
     }
 
@@ -115,13 +117,8 @@ impl<'a> TokenStream<'a> {
         };
 
         match self.next_lexeme {
-            Some(lexeme) => {
-                if matches!(lexeme.kind, LexemeKind::ClosingParen) {
-                    Ok(self.advance())
-                } else {
-                    Err(self.peek().unwrap())
-                }
-            }
+            Some(Lexeme::ClosingParen) => Ok(self.advance()),
+            Some(_) => Err(self.peek().unwrap()),
             None => Ok(*self),
         }
     }
@@ -139,14 +136,13 @@ impl NestingGuard {
 
 #[cfg(test)]
 mod tests {
-    use crate::testing::token;
-    use std::collections::BTreeSet;
-
     use super::TokenStream;
+    use crate::testing::token;
     use crate::tokens::{Token, UnbalancedParenthesis};
     use crate::CompletionResult;
+    use std::collections::BTreeSet;
 
-    fn assert_takes<'a>(stream: TokenStream<'a>, expected: Token) -> TokenStream<'a> {
+    fn assert_takes<'a>(stream: TokenStream<'a>, expected: Token<'a>) -> TokenStream<'a> {
         let peeked = stream.peek().unwrap().unwrap();
         let (taken, stream) = stream.take().unwrap().unwrap();
         assert_eq!(peeked, taken);
@@ -158,8 +154,11 @@ mod tests {
     fn taking_tokens() {
         let stream = TokenStream::new("first --second third");
         let stream = assert_takes(stream, token!("first"));
+        assert!(!stream.is_all_consumed());
         let stream = assert_takes(stream, token!(--"second"));
-        let stream = assert_takes(stream, token!("third", last));
+        assert!(!stream.is_all_consumed());
+        let stream = assert_takes(stream, token!("third"));
+        assert!(stream.is_all_consumed());
         assert!(stream.peek().is_none());
         assert!(stream.take().is_none());
     }
@@ -181,7 +180,7 @@ mod tests {
 
         let stream = stream.exit_nested(guard).unwrap();
 
-        assert_takes(stream, token!("fourth", last));
+        assert_takes(stream, token!("fourth"));
     }
 
     #[test]
@@ -192,7 +191,7 @@ mod tests {
         let stream = assert_takes(stream, token!(--"second"));
         let stream = assert_takes(stream, token!("third"));
         let stream = stream.exit_nested(guard).unwrap();
-        assert_takes(stream, token!("fourth", last));
+        assert_takes(stream, token!("fourth"));
     }
 
     #[test]
@@ -226,7 +225,7 @@ mod tests {
         let result = stream.complete_nested(|_input| panic!("should not be called"));
         assert!(result.value_consumed);
         assert!(result.suggestions.is_empty());
-        assert_takes(result.remaining.unwrap(), token!("third", last));
+        assert_takes(result.remaining.unwrap(), token!("third"));
     }
 
     #[test]

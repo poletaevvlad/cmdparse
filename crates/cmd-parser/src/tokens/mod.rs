@@ -2,7 +2,7 @@ mod lexing;
 mod stream;
 
 use crate::error::UnbalancedParenthesis;
-use lexing::{Lexeme, LexemeKind};
+use lexing::Lexeme;
 use std::{
     borrow::Cow,
     fmt::{self, Write},
@@ -62,66 +62,33 @@ impl<'a> fmt::Display for RawLexeme<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TokenValue<T> {
-    Text(T),
-    Attribute(T),
+pub enum Token<'a> {
+    Text(RawLexeme<'a>),
+    Attribute(RawLexeme<'a>),
 }
 
-impl<T> TokenValue<T> {
-    pub fn map<R, F: FnOnce(T) -> R>(self, f: F) -> TokenValue<R> {
+impl<'a> Token<'a> {
+    pub fn into_raw_lexeme(self) -> RawLexeme<'a> {
         match self {
-            TokenValue::Text(text) => TokenValue::Text(f(text)),
-            TokenValue::Attribute(attr) => TokenValue::Attribute(f(attr)),
-        }
-    }
-
-    pub fn into_inner(self) -> T {
-        match self {
-            TokenValue::Text(inner) => inner,
-            TokenValue::Attribute(inner) => inner,
+            Token::Text(inner) => inner,
+            Token::Attribute(inner) => inner,
         }
     }
 
     pub fn is_attribute(&self) -> bool {
-        matches!(self, TokenValue::Attribute(_))
+        matches!(self, Token::Attribute(_))
     }
 
     pub fn is_text(&self) -> bool {
-        matches!(self, TokenValue::Text(_))
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Token<'a> {
-    value: TokenValue<RawLexeme<'a>>,
-    is_last: bool,
-}
-
-impl<'a> Token<'a> {
-    pub fn from_parts(value: TokenValue<RawLexeme<'a>>, is_last: bool) -> Self {
-        Token { value, is_last }
+        matches!(self, Token::Text(_))
     }
 
     fn from_lexeme(lexeme: Lexeme<'a>) -> Result<Self, UnbalancedParenthesis> {
-        let token_value = match lexeme.kind {
-            LexemeKind::OpeningParen | LexemeKind::ClosingParen => {
-                return Err(UnbalancedParenthesis)
-            }
-            LexemeKind::Text(text) => TokenValue::Text(text),
-            LexemeKind::Attribute(attr) => TokenValue::Attribute(attr),
-        };
-        Ok(Token {
-            value: token_value.map(RawLexeme::new),
-            is_last: lexeme.is_last,
-        })
-    }
-
-    pub fn is_last(&self) -> bool {
-        self.is_last
-    }
-
-    pub fn value(&self) -> TokenValue<RawLexeme<'a>> {
-        self.value
+        match lexeme {
+            Lexeme::OpeningParen | Lexeme::ClosingParen => Err(UnbalancedParenthesis),
+            Lexeme::Text(text) => Ok(Token::Text(RawLexeme::new(text))),
+            Lexeme::Attribute(attr) => Ok(Token::Attribute(RawLexeme::new(attr))),
+        }
     }
 }
 

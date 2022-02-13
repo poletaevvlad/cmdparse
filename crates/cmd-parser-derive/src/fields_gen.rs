@@ -72,7 +72,7 @@ impl<'a> FieldView<'a> {
                             first_token = false;
                             suggestions.extend(result.suggestions);
                             continue;
-                        } else if first_token && matches!(input.peek(), Some(Ok(token)) if token.value().is_text()) {
+                        } else if first_token && matches!(input.peek(), Some(Ok(token)) if token.is_text()) {
                             return result.add_suggestions(suggestions);
                         }
                         suggestions.extend(result.suggestions);
@@ -224,13 +224,13 @@ pub(crate) fn gen_parse_struct(
                 #required_parsing
                 _ => match input.take() {
                     None | Some(Err(_)) => break,
-                    Some(Ok((token, _))) if token.value().is_text() => break,
+                    Some(Ok((::cmd_parser::tokens::Token::Text(_), _))) => break,
                     Some(Ok((token, remaining))) => ::cmd_parser::error::UnrecognizedToken::new(token, remaining),
                 }
             };
-            match unexpected.token().value() {
-                ::cmd_parser::tokens::TokenValue::Text(_) => return Err(unexpected.into()),
-                ::cmd_parser::tokens::TokenValue::Attribute(attribute) => {
+            match unexpected.token() {
+                ::cmd_parser::tokens::Token::Text(_) => return Err(unexpected.into()),
+                ::cmd_parser::tokens::Token::Attribute(attribute) => {
                     let attribute = attribute.parse_string();
                     match ::std::borrow::Borrow::<str>::borrow(&attribute) {
                         #optional_parsing
@@ -284,13 +284,13 @@ pub(crate) fn gen_complete_struct(ctx: &CodegenContext, fields: &FieldsSet<'_>) 
                 None if required_index >= #required_count => ::cmd_parser::CompletionResult::new(input, true),
                 None | Some(Err(_)) => ::cmd_parser::CompletionResult::new_final(false),
                 Some(Ok((token, remaining))) => {
-                    match token.value() {
-                        ::cmd_parser::tokens::TokenValue::Text(_) if required_index >= #required_count => {
+                    match token {
+                        ::cmd_parser::tokens::Token::Text(_) if required_index >= #required_count => {
                             ::cmd_parser::CompletionResult::new(input, true)
                         }
-                        ::cmd_parser::tokens::TokenValue::Text(_) => ::cmd_parser::CompletionResult::new_final(false),
+                        ::cmd_parser::tokens::Token::Text(_) => ::cmd_parser::CompletionResult::new_final(false),
 
-                        ::cmd_parser::tokens::TokenValue::Attribute(attribute) if token.is_last() => {
+                        ::cmd_parser::tokens::Token::Attribute(attribute) if remaining.is_all_consumed() => {
                             let text = attribute.parse_string();
                             suggestions.extend(
                                 ::cmd_parser::utils::complete_variants(&text, ATTRIBUTE_NAMES)
@@ -304,7 +304,7 @@ pub(crate) fn gen_complete_struct(ctx: &CodegenContext, fields: &FieldsSet<'_>) 
                                 ::cmd_parser::CompletionResult::new_final(consumed)
                             }
                         }
-                        ::cmd_parser::tokens::TokenValue::Attribute(attribute) => {
+                        ::cmd_parser::tokens::Token::Attribute(attribute) => {
                             let text = attribute.parse_string();
                             match ::std::borrow::Borrow::<str>::borrow(&text) {
                                 #optional_complete

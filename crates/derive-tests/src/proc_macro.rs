@@ -11,11 +11,11 @@ mod unit_struct {
     test_parse!(empty, Unit, "" => Ok(Unit, None));
     test_parse!(
         followed_by_token, Unit,
-        "remaining" => Ok(Unit, Some(token!("remaining", last)))
+        "remaining" => Ok(Unit, Some(token!("remaining")))
     );
     test_parse!(
         followed_by_attr, Unit,
-        "--remaining" => Ok(Unit, Some(token!(--"remaining", last)))
+        "--remaining" => Ok(Unit, Some(token!(--"remaining")))
     );
 
     test_complete!(complete_empty, Unit, "" => {
@@ -25,12 +25,12 @@ mod unit_struct {
     });
     test_complete!(complete_token, Unit, "remaining" => {
         consumed: true,
-        remaining: Some(Some(token!("remaining", last))),
+        remaining: Some(Some(token!("remaining"))),
         suggestions: [],
     });
     test_complete!(complete_attribute, Unit, "--remaining" => {
         consumed: true,
-        remaining: Some(Some(token!(--"remaining", last))),
+        remaining: Some(Some(token!(--"remaining"))),
         suggestions: [],
     });
 }
@@ -47,11 +47,11 @@ mod newtype_struct {
     );
     test_parse!(
         parse_error, Newtype,
-        "abc" => Error(ParseError::invalid(token!("abc", last), None).expected("boolean"))
+        "abc" => Error(ParseError::invalid(token!("abc"), None).expected("boolean"))
     );
     test_parse!(
         success, Newtype,
-        "true abc" => Ok(Newtype(true), Some(token!("abc", last)))
+        "true abc" => Ok(Newtype(true), Some(token!("abc")))
     );
     test_parse!(
         unrecognized_attr, Newtype,
@@ -86,7 +86,7 @@ mod multiple_args {
 
     test_parse!(
         success, Multiple,
-        "1 2 3" => Ok(Multiple { a: 1, b: 2.0 }, Some(token!("3", last)))
+        "1 2 3" => Ok(Multiple { a: 1, b: 2.0 }, Some(token!("3")))
     );
     test_parse!(
         unrecognized_attr, Multiple,
@@ -108,7 +108,7 @@ mod multiple_args {
     });
     test_complete!(complete_attr_after_fields, Multiple, "1 2 --attr" => {
         consumed: true,
-        remaining: Some(Some(token!(--"attr", last))),
+        remaining: Some(Some(token!(--"attr"))),
         suggestions: [],
     });
 }
@@ -152,7 +152,7 @@ mod custom_ctx {
         let parser = NewtypeCustomCtx::new_parser(4);
         let (value, remaining) = Parser::<u8>::parse(&parser, stream).unwrap();
         assert_eq!(value, NewtypeCustomCtx(20));
-        assert_eq!(remaining.peek().unwrap().unwrap(), token!("2", last));
+        assert_eq!(remaining.peek().unwrap().unwrap(), token!("2"));
     }
 }
 
@@ -208,7 +208,7 @@ mod custom_ctx_bounds {
         let parser = NewtypeCustomCtx::new_parser(MockCtx);
         let (value, remaining) = Parser::<MockCtx>::parse(&parser, stream).unwrap();
         assert_eq!(value, NewtypeCustomCtx(20));
-        assert_eq!(remaining.peek().unwrap().unwrap(), token!("2", last));
+        assert_eq!(remaining.peek().unwrap().unwrap(), token!("2"));
     }
 }
 
@@ -232,15 +232,15 @@ mod some_optional {
     );
     test_parse!(
         has_usize, WithOptional,
-        "10 --opt 2 rest" => Ok(WithOptional(10, 2, false), Some(token!("rest", last)))
+        "10 --opt 2 rest" => Ok(WithOptional(10, 2, false), Some(token!("rest")))
     );
     test_parse!(
         has_attr_with_value, WithOptional,
-        "10 --yes rest" => Ok(WithOptional(10, 5, true), Some(token!("rest", last)))
+        "10 --yes rest" => Ok(WithOptional(10, 5, true), Some(token!("rest")))
     );
     test_parse!(
         has_all_fields, WithOptional,
-        "10 --yes --opt 7 rest" => Ok(WithOptional(10, 7, true), Some(token!("rest", last)))
+        "10 --yes --opt 7 rest" => Ok(WithOptional(10, 7, true), Some(token!("rest")))
     );
     test_parse!(
         stops_after_required_finished, WithOptional,
@@ -257,22 +257,22 @@ mod some_optional {
 
     test_complete!(complete_attr_dashes_only, WithOptional, "--" => {
         consumed: false,
-        remaining: Some(Some(token!(--"", last))),
+        remaining: Some(Some(token!(--""))),
         suggestions: ["false", "opt", "yes"],
     });
     test_complete!(complete_attr_partial, WithOptional, "--y" => {
         consumed: false,
-        remaining: Some(Some(token!(--"y", last))),
+        remaining: Some(Some(token!(--"y"))),
         suggestions: ["es"],
     });
     test_complete!(complete_attr_partial_consumed, WithOptional, " 5 --y" => {
         consumed: true,
-        remaining: Some(Some(token!(--"y", last))),
+        remaining: Some(Some(token!(--"y"))),
         suggestions: ["es"],
     });
     test_complete!(complete_attr_last, WithOptional, "5 --opt 3 --fa" => {
         consumed: true,
-        remaining: Some(Some(token!(--"fa", last))),
+        remaining: Some(Some(token!(--"fa"))),
         suggestions: ["lse"],
     });
 }
@@ -292,7 +292,7 @@ mod all_optional {
 
     test_parse!(
         none_specified, AllOptional,
-        "abc" => Ok(AllOptional { a: 0, b: 0, c: 0 }, Some(token!("abc", last)))
+        "abc" => Ok(AllOptional { a: 0, b: 0, c: 0 }, Some(token!("abc")))
     );
     test_parse!(
         none_specified_attr, AllOptional,
@@ -300,15 +300,15 @@ mod all_optional {
     );
     test_parse!(
         only_one, AllOptional,
-        "--a 10 abc" => Ok(AllOptional { a: 10, b: 0, c: 0 }, Some(token!("abc", last)))
+        "--a 10 abc" => Ok(AllOptional { a: 10, b: 0, c: 0 }, Some(token!("abc")))
     );
     test_parse!(
         two_specified, AllOptional,
-        "--a 10 --b 20 abc" => Ok(AllOptional { a: 10, b: 20, c: 0 }, Some(token!("abc", last)))
+        "--a 10 --b 20 abc" => Ok(AllOptional { a: 10, b: 20, c: 0 }, Some(token!("abc")))
     );
     test_parse!(
         all_specified, AllOptional,
-        "--a 10 --b 20 --c 30 abc" => Ok(AllOptional { a: 10, b: 20, c: 30 }, Some(token!("abc", last)))
+        "--a 10 --b 20 --c 30 abc" => Ok(AllOptional { a: 10, b: 20, c: 30 }, Some(token!("abc")))
     );
     test_parse!(
         stop_on_unknown_attr, AllOptional,
@@ -317,12 +317,12 @@ mod all_optional {
 
     test_complete!(complete_attr_dashes_only, AllOptional, "--" => {
         consumed: true,
-        remaining: Some(Some(token!(--"", last))),
+        remaining: Some(Some(token!(--""))),
         suggestions: ["a", "b", "c"],
     });
     test_complete!(complete_attr_partial, AllOptional, "--a 5 --b 10 --c" => {
         consumed: true,
-        remaining: Some(Some(token!(--"c", last))),
+        remaining: Some(Some(token!(--"c"))),
         suggestions: [],
     });
 }
@@ -335,7 +335,7 @@ mod some_default {
 
     test_parse!(
         single_specified, SomeDefault,
-        "10 abc" => Ok(SomeDefault(0, 5, 10), Some(token!("abc", last)))
+        "10 abc" => Ok(SomeDefault(0, 5, 10), Some(token!("abc")))
     );
     test_parse!(
         token_required, SomeDefault,
@@ -343,7 +343,7 @@ mod some_default {
     );
     test_parse!(
         unrecognized_attr, SomeDefault,
-        "--unknown abc" => Unrecognized(token!(--"unknown"), Some(token!("abc", last)))
+        "--unknown abc" => Unrecognized(token!(--"unknown"), Some(token!("abc")))
     );
 }
 
@@ -356,11 +356,11 @@ mod all_default {
     test_parse!(empty, AllDefault, "" => Ok(AllDefault(0, 5), None));
     test_parse!(
         followed_by_token, AllDefault,
-        "remaining" => Ok(AllDefault(0, 5), Some(token!("remaining", last)))
+        "remaining" => Ok(AllDefault(0, 5), Some(token!("remaining")))
     );
     test_parse!(
         followed_by_attr, AllDefault,
-        "--remaining" => Ok(AllDefault(0, 5), Some(token!(--"remaining", last)))
+        "--remaining" => Ok(AllDefault(0, 5), Some(token!(--"remaining")))
     );
 
     test_complete!(complete_empty, AllDefault, "" => {
@@ -370,12 +370,12 @@ mod all_default {
     });
     test_complete!(complete_token, AllDefault, "remaining" => {
         consumed: true,
-        remaining: Some(Some(token!("remaining", last))),
+        remaining: Some(Some(token!("remaining"))),
         suggestions: [],
     });
     test_complete!(complete_attribute, AllDefault, "--remaining" => {
         consumed: true,
-        remaining: Some(Some(token!(--"remaining", last))),
+        remaining: Some(Some(token!(--"remaining"))),
         suggestions: [],
     });
 }
@@ -391,15 +391,15 @@ mod enum_simple {
 
     test_parse!(
         parse_first, Enum,
-        "first remaining" => Ok(Enum::First, Some(token!("remaining", last)))
+        "first remaining" => Ok(Enum::First, Some(token!("remaining")))
     );
     test_parse!(
         parse_second, Enum,
-        "second remaining" => Ok(Enum::Second, Some(token!("remaining", last)))
+        "second remaining" => Ok(Enum::Second, Some(token!("remaining")))
     );
     test_parse!(
         unknown_variant, Enum,
-        "third remaining" => Unrecognized(token!("third"), Some(token!("remaining", last)))
+        "third remaining" => Unrecognized(token!("third"), Some(token!("remaining")))
     );
     test_parse!(
         variant_required, Enum,
@@ -407,7 +407,7 @@ mod enum_simple {
     );
     test_parse!(
         unrecognized_attr, Enum,
-        "--unknown remaining" => Unrecognized(token!(--"unknown"), Some(token!("remaining", last)))
+        "--unknown remaining" => Unrecognized(token!(--"unknown"), Some(token!("remaining")))
     );
 
     test_complete!(complete_empty, Enum, "" => {
@@ -417,12 +417,12 @@ mod enum_simple {
     });
     test_complete!(complete_partial_variant, Enum, "fir" => {
         consumed: false,
-        remaining: Some(Some(token!("fir", last))),
+        remaining: Some(Some(token!("fir"))),
         suggestions: ["st"],
     });
     test_complete!(complete_complete_variant, Enum, "second abc" => {
         consumed: true,
-        remaining: Some(Some(token!("abc", last))),
+        remaining: Some(Some(token!("abc"))),
         suggestions: [],
     });
 }
@@ -443,42 +443,42 @@ mod enum_ignore_aliases {
 
     test_parse!(
         parse_normal, WithAliases,
-        "real 10 abc" => Ok(WithAliases::Real(10), Some(token!("abc", last)))
+        "real 10 abc" => Ok(WithAliases::Real(10), Some(token!("abc")))
     );
     test_parse!(
         returns_inner_error, WithAliases,
-        "real nan" => Error(ParseError::invalid(token!("nan", last), None).expected("integer"))
+        "real nan" => Error(ParseError::invalid(token!("nan"), None).expected("integer"))
     );
     test_parse!(
         parse_alias, WithAliases,
-        "alias 10 abc" => Ok(WithAliases::Real(10), Some(token!("abc", last)))
+        "alias 10 abc" => Ok(WithAliases::Real(10), Some(token!("abc")))
     );
     test_parse!(
         parse_renamed, WithAliases,
-        "new-name abc" => Ok(WithAliases::Renamed, Some(token!("abc", last)))
+        "new-name abc" => Ok(WithAliases::Renamed, Some(token!("abc")))
     );
     test_parse!(
         cannot_parse_ignored, WithAliases,
-        "ignored abc" => Unrecognized(token!("ignored"), Some(token!("abc", last)))
+        "ignored abc" => Unrecognized(token!("ignored"), Some(token!("abc")))
     );
     test_parse!(
         cannot_parse_renamed, WithAliases,
-        "renamed abc" => Unrecognized(token!("renamed"), Some(token!("abc", last)))
+        "renamed abc" => Unrecognized(token!("renamed"), Some(token!("abc")))
     );
 
     test_complete!(complete_suggestions_normal, WithAliases, "r" => {
         consumed: false,
-        remaining: Some(Some(token!("r", last))),
+        remaining: Some(Some(token!("r"))),
         suggestions: ["eal"]
     });
     test_complete!(complete_suggestions_alias, WithAliases, "a" => {
         consumed: false,
-        remaining: Some(Some(token!("a", last))),
+        remaining: Some(Some(token!("a"))),
         suggestions: ["lias"]
     });
     test_complete!(complete_suggestions_renamed, WithAliases, "n" => {
         consumed: false,
-        remaining: Some(Some(token!("n", last))),
+        remaining: Some(Some(token!("n"))),
         suggestions: ["ew-name"]
     });
     test_complete!(complete_recognized, WithAliases, "new-name " => {
@@ -520,24 +520,24 @@ mod enum_transparent {
 
     test_parse!(
         parse_letter_1, WithTransparent,
-        "a abc" => Ok(WithTransparent::Letter(Letter::A), Some(token!("abc", last)))
+        "a abc" => Ok(WithTransparent::Letter(Letter::A), Some(token!("abc")))
     );
     test_parse!(
         parse_letter_2, WithTransparent,
-        "b abc" => Ok(WithTransparent::Letter(Letter::B), Some(token!("abc", last)))
+        "b abc" => Ok(WithTransparent::Letter(Letter::B), Some(token!("abc")))
     );
     test_parse!(
         parse_number, WithTransparent,
-        "two abc" => Ok(WithTransparent::Number(Number::Two), Some(token!("abc", last)))
+        "two abc" => Ok(WithTransparent::Number(Number::Two), Some(token!("abc")))
     );
     test_parse!(
         parse_variant, WithTransparent,
-        "five abc" => Unrecognized(token!("five"), Some(token!("abc", last)))
+        "five abc" => Unrecognized(token!("five"), Some(token!("abc")))
     );
 
     test_complete!(complete_number_variant, WithTransparent, "t" => {
         consumed: false,
-        remaining: Some(Some(token!("t", last))),
+        remaining: Some(Some(token!("t"))),
         suggestions: ["wo", "hree"],
     });
     test_complete!(complete_recognized, WithTransparent, "a " => {

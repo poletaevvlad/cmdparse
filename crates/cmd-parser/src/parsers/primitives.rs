@@ -1,5 +1,5 @@
 use crate::error::{ParseError, UnrecognizedToken};
-use crate::tokens::{TokenStream, TokenValue};
+use crate::tokens::{Token, TokenStream};
 use crate::utils::complete_variants;
 use crate::{CompletionResult, Parsable, ParseResult, Parser};
 use std::borrow::{Borrow, Cow};
@@ -10,11 +10,11 @@ use std::str::FromStr;
 
 fn complete_token_single(input: TokenStream<'_>) -> CompletionResult<'_> {
     match input.take() {
-        Some(Ok((token, remaining))) => match token.value() {
-            TokenValue::Text(_) if token.is_last() => CompletionResult::new_final(true),
-            TokenValue::Text(_) => CompletionResult::new(remaining, true),
-            TokenValue::Attribute(_) => CompletionResult::new(input, false),
-        },
+        Some(Ok((Token::Text(_), remaining))) if remaining.is_all_consumed() => {
+            CompletionResult::new_final(true)
+        }
+        Some(Ok((Token::Text(_), remaining))) => CompletionResult::new(remaining, true),
+        Some(Ok((Token::Attribute(_), _))) => CompletionResult::new(input, false),
         Some(Err(_)) | None => CompletionResult::new_final(false),
     }
 }
@@ -114,8 +114,8 @@ where
             .take()
             .transpose()?
             .ok_or_else(|| ParseError::token_required().expected("integer"))?;
-        match token.value() {
-            TokenValue::Text(text) => match text.parse_string().parse() {
+        match token {
+            Token::Text(text) => match text.parse_string().parse() {
                 Ok(value) => Ok((value, remaining)),
                 Err(error) => {
                     let message = match error.kind() {
@@ -129,7 +129,7 @@ where
                         .into())
                 }
             },
-            TokenValue::Attribute(_) => Err(UnrecognizedToken::new(token, remaining).into()),
+            Token::Attribute(_) => Err(UnrecognizedToken::new(token, remaining).into()),
         }
     }
 
@@ -229,14 +229,14 @@ impl<T: FromStr, Ctx> Parser<Ctx> for FromStrParser<T> {
             .take()
             .transpose()?
             .ok_or_else(|| ParseError::token_required().expected("real number"))?;
-        match token.value() {
-            TokenValue::Text(text) => match text.parse_string().parse() {
+        match token {
+            Token::Text(text) => match text.parse_string().parse() {
                 Ok(value) => Ok((value, remaining)),
                 Err(_) => Err(ParseError::invalid(token, None)
                     .expected("real number")
                     .into()),
             },
-            TokenValue::Attribute(_) => Err(UnrecognizedToken::new(token, remaining).into()),
+            Token::Attribute(_) => Err(UnrecognizedToken::new(token, remaining).into()),
         }
     }
 
@@ -278,9 +278,9 @@ impl<Ctx> Parser<Ctx> for StringParser {
             .take()
             .transpose()?
             .ok_or_else(|| ParseError::token_required().expected("string"))?;
-        match token.value() {
-            TokenValue::Text(text) => Ok((ToString::to_string(&text.parse_string()), remaining)),
-            TokenValue::Attribute(_) => Err(UnrecognizedToken::new(token, remaining).into()),
+        match token {
+            Token::Text(text) => Ok((ToString::to_string(&text.parse_string()), remaining)),
+            Token::Attribute(_) => Err(UnrecognizedToken::new(token, remaining).into()),
         }
     }
 
@@ -329,29 +329,26 @@ impl<Ctx> Parser<Ctx> for BooleanParser {
             .take()
             .transpose()?
             .ok_or_else(|| ParseError::token_required().expected("boolean"))?;
-        match token.value() {
-            TokenValue::Text(text) => match text.parse_string().borrow() {
+        match token {
+            Token::Text(text) => match text.parse_string().borrow() {
                 "true" | "t" | "yes" | "y" => Ok((true, remaining)),
                 "false" | "f" | "no" | "n" => Ok((false, remaining)),
                 _ => Err(ParseError::invalid(token, None).expected("boolean").into()),
             },
-            TokenValue::Attribute(_) => Err(UnrecognizedToken::new(token, remaining).into()),
+            Token::Attribute(_) => Err(UnrecognizedToken::new(token, remaining).into()),
         }
     }
 
     fn complete<'a>(&self, input: TokenStream<'a>) -> CompletionResult<'a> {
         match input.take() {
-            Some(Ok((token, remaining))) => match token.value() {
-                TokenValue::Text(text) if token.is_last() => {
-                    let text = text.parse_string();
-                    CompletionResult::new_final(true).add_suggestions(
-                        complete_variants(&text, &["false", "no", "true", "yes"])
-                            .map(Cow::Borrowed),
-                    )
-                }
-                TokenValue::Text(_) => CompletionResult::new(remaining, true),
-                TokenValue::Attribute(_) => CompletionResult::new(input, false),
-            },
+            Some(Ok((Token::Text(text), remaining))) if remaining.is_all_consumed() => {
+                let text = text.parse_string();
+                CompletionResult::new_final(true).add_suggestions(
+                    complete_variants(&text, &["false", "no", "true", "yes"]).map(Cow::Borrowed),
+                )
+            }
+            Some(Ok((Token::Text(_), remaining))) => CompletionResult::new(remaining, true),
+            Some(Ok((Token::Attribute(_), _))) => CompletionResult::new(input, false),
             Some(Err(_)) | None => CompletionResult::new_final(false),
         }
     }
@@ -386,7 +383,7 @@ mod tests {
                 let stream = TokenStream::new(&input);
                 let (result, remaining) = Parser::<()>::parse(&parser, stream).unwrap();
                 assert_eq!(result, $value);
-                assert_eq!(remaining.peek().unwrap().unwrap(), token!("abc", last));
+                assert_eq!(remaining.peek().unwrap().unwrap(), token!("abc"));
             }
         };
         ($name:ident, $type:ty, $text:literal => Err($err:expr)) => {
@@ -416,7 +413,7 @@ mod tests {
                         assert_eq!(unrecognized.token(), token!(--"unrecognized"));
                         assert_eq!(
                             unrecognized.remaining().peek().unwrap().unwrap(),
-                            token!("abc", last)
+                            token!("abc")
                         );
                     }
                 }
@@ -438,12 +435,12 @@ mod tests {
         test_parse!(parse_u8, u8, "15" => Ok(15));
         test_parse!(
             parse_non_zero_u8_zero, std::num::NonZeroU8,
-            "0" => Err(ParseError::invalid(token!("0", last), Some("cannot be zero".into())).expected("integer"))
+            "0" => Err(ParseError::invalid(token!("0"), Some("cannot be zero".into())).expected("integer"))
         );
         test_parse!(parse_non_zero_u8_non_zero, std::num::NonZeroU8, "5" => Ok(std::num::NonZeroU8::new(5).unwrap()));
         test_unrecognized_attribute!(unrecognized_attr, i32);
-        test_parse!(parse_invalid, u16, "abc" => Err(ParseError::invalid(token!("abc", last), None).expected("integer")));
-        test_parse!(parse_too_large, u16, "999999999" => Err(ParseError::invalid(token!("999999999", last), Some("too large".into())).expected("integer")));
+        test_parse!(parse_invalid, u16, "abc" => Err(ParseError::invalid(token!("abc"), None).expected("integer")));
+        test_parse!(parse_too_large, u16, "999999999" => Err(ParseError::invalid(token!("999999999"), Some("too large".into())).expected("integer")));
         test_parse!(parse_empty_string, u16, "" => Err(ParseError::token_required().expected("integer")));
 
         test_complete!(complete_empty_string, i16, "" => {
@@ -453,7 +450,7 @@ mod tests {
         });
         test_complete!(complete_attribute, i16, "--unknown" => {
             consumed: false,
-            remaining: Some(Some(token!(--"unknown", last))),
+            remaining: Some(Some(token!(--"unknown"))),
             suggestions: [],
         });
         test_complete!(complete_last_token, i16, "abc" => {
@@ -493,10 +490,10 @@ mod tests {
             let stream = TokenStream::new("3.2 abc");
             let (result, remaining) = Parser::<()>::parse(&parser, stream).unwrap();
             assert!((result - 3.2).abs() < f64::EPSILON);
-            assert_eq!(remaining.peek().unwrap().unwrap(), token!("abc", last));
+            assert_eq!(remaining.peek().unwrap().unwrap(), token!("abc"));
         }
 
-        test_parse!(parse_f64_error, f64, "abc" => Err(ParseError::invalid(token!("abc", last), None).expected("real number")));
+        test_parse!(parse_f64_error, f64, "abc" => Err(ParseError::invalid(token!("abc"), None).expected("real number")));
         test_parse!(parse_f64_empty, f64, "" => Err(ParseError::token_required().expected("real number")));
         test_unrecognized_attribute!(unrecognized_attr, f32);
 
@@ -523,7 +520,7 @@ mod tests {
         test_parse!(parse_bool_no, bool, "no" => Ok(false));
         test_unrecognized_attribute!(unrecognized_attr, bool);
         test_parse!(parse_empty_string, bool, "" => Err(ParseError::token_required().expected("boolean")));
-        test_parse!(parse_invalie, bool, "abc" => Err(ParseError::invalid(token!("abc", last), None).expected("boolean")));
+        test_parse!(parse_invalie, bool, "abc" => Err(ParseError::invalid(token!("abc"), None).expected("boolean")));
 
         test_complete!(complete_empty_string, bool, "" => {
             consumed: false,

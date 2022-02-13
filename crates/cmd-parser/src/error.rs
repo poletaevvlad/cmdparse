@@ -1,4 +1,4 @@
-use crate::tokens::{Token, TokenStream, TokenValue};
+use crate::tokens::{Token, TokenStream};
 use std::borrow::Cow;
 use std::fmt;
 
@@ -76,19 +76,17 @@ impl<'a> fmt::Display for ParseError<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.variant {
             ParseErrorVariant::Invalid { token, message } => {
-                f.write_fmt(format_args!("cannot parse {}", token.value().into_inner()))?;
+                f.write_fmt(format_args!("cannot parse {}", token.into_raw_lexeme()))?;
                 if let Some(message) = message {
                     f.write_fmt(format_args!(" ({})", message))?;
                 }
             }
-            ParseErrorVariant::Unknown(unknown) => match unknown.value() {
-                TokenValue::Text(text) => {
-                    f.write_fmt(format_args!("unrecognized token: {}", text))?;
-                }
-                TokenValue::Attribute(attr) => {
-                    f.write_fmt(format_args!("unrecognized attribute: {}", attr))?;
-                }
-            },
+            ParseErrorVariant::Unknown(Token::Text(text)) => {
+                f.write_fmt(format_args!("unrecognized token: {}", text))?;
+            }
+            ParseErrorVariant::Unknown(Token::Attribute(attr)) => {
+                f.write_fmt(format_args!("unrecognized attribute: {}", attr))?;
+            }
             ParseErrorVariant::TokenRequired => f.write_str("not enough tokens")?,
             ParseErrorVariant::UnbalancedParenthesis => f.write_str("unbalanced parenthesis")?,
             ParseErrorVariant::Custom(message) => f.write_str(message)?,

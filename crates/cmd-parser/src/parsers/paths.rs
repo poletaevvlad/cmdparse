@@ -1,5 +1,5 @@
 use crate::error::{ParseError, UnrecognizedToken};
-use crate::tokens::TokenValue;
+use crate::tokens::Token;
 use crate::{tokens::TokenStream, Parser};
 use crate::{CompletionResult, Parsable, ParseResult};
 use std::borrow::Cow;
@@ -41,9 +41,9 @@ impl<Ctx> Parser<Ctx> for PathParser {
 
     fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
         match input.take() {
-            Some(Ok((token, remaining))) => match token.value() {
-                TokenValue::Text(text) => Ok((text.parse_string().into_owned().into(), remaining)),
-                TokenValue::Attribute(_) => Err(UnrecognizedToken::new(token, remaining).into()),
+            Some(Ok((token, remaining))) => match token {
+                Token::Text(text) => Ok((text.parse_string().into_owned().into(), remaining)),
+                Token::Attribute(_) => Err(UnrecognizedToken::new(token, remaining).into()),
             },
             Some(Err(err)) => Err(err.into()),
             None => Err(ParseError::token_required().expected("path").into()),
@@ -52,45 +52,41 @@ impl<Ctx> Parser<Ctx> for PathParser {
 
     fn complete<'a>(&self, input: TokenStream<'a>) -> CompletionResult<'a> {
         match input.take() {
-            Some(Ok((token, remaining))) => match token.value() {
-                TokenValue::Text(_) if !token.is_last() => CompletionResult::new(remaining, true),
-                TokenValue::Text(text) => {
-                    let text = text.parse_string();
-                    let path = Path::new::<str>(&text);
-                    if text.ends_with(&[std::path::MAIN_SEPARATOR, '/'] as &[char]) {
+            Some(Ok((Token::Text(_), remaining))) if !remaining.is_all_consumed() => {
+                CompletionResult::new(remaining, true)
+            }
+            Some(Ok((Token::Text(text), _))) => {
+                let text = text.parse_string();
+                let path = Path::new::<str>(&text);
+                if text.ends_with(&[std::path::MAIN_SEPARATOR, '/'] as &[char]) {
+                    reduce_dir_contents(path, CompletionResult::new_final(true), |result, item| {
+                        let suggestion = Cow::Owned(item.to_string());
+                        result.add_suggestions(std::iter::once(suggestion))
+                    })
+                } else {
+                    let filename = path.file_name().and_then(|os_str| os_str.to_str());
+                    let parent = path.parent();
+                    if let (Some(file_name), Some(parent)) = (filename, parent) {
                         reduce_dir_contents(
-                            path,
+                            parent,
                             CompletionResult::new_final(true),
-                            |result, item| {
-                                let suggestion = Cow::Owned(item.to_string());
-                                result.add_suggestions(std::iter::once(suggestion))
+                            |mut result, item| {
+                                if let Some(suffix) = item.strip_prefix(file_name) {
+                                    if !suffix.is_empty() {
+                                        let suggestion = Cow::Owned(suffix.to_string());
+                                        result =
+                                            result.add_suggestions(std::iter::once(suggestion));
+                                    }
+                                }
+                                result
                             },
                         )
                     } else {
-                        let filename = path.file_name().and_then(|os_str| os_str.to_str());
-                        let parent = path.parent();
-                        if let (Some(file_name), Some(parent)) = (filename, parent) {
-                            reduce_dir_contents(
-                                parent,
-                                CompletionResult::new_final(true),
-                                |mut result, item| {
-                                    if let Some(suffix) = item.strip_prefix(file_name) {
-                                        if !suffix.is_empty() {
-                                            let suggestion = Cow::Owned(suffix.to_string());
-                                            result =
-                                                result.add_suggestions(std::iter::once(suggestion));
-                                        }
-                                    }
-                                    result
-                                },
-                            )
-                        } else {
-                            CompletionResult::new_final(true)
-                        }
+                        CompletionResult::new_final(true)
                     }
                 }
-                TokenValue::Attribute(_) => CompletionResult::new(input, false),
-            },
+            }
+            Some(Ok((Token::Attribute(_), _))) => CompletionResult::new(input, false),
             None | Some(Err(_)) => CompletionResult::new_final(false),
         }
     }
@@ -116,21 +112,21 @@ mod tests {
     );
     test_parse!(
         parse_attribute, PathBuf,
-        "--attr remaining" => Unrecognized(token!(--"attr"), Some(token!("remaining", last)))
+        "--attr remaining" => Unrecognized(token!(--"attr"), Some(token!("remaining")))
     );
     test_parse!(
         parse_path, PathBuf,
-        "dir/file.txt remaining" => Ok(PathBuf::from("dir/file.txt".to_string()), Some(token!("remaining", last)))
+        "dir/file.txt remaining" => Ok(PathBuf::from("dir/file.txt".to_string()), Some(token!("remaining")))
     );
 
     test_complete!(complete_attr, PathBuf, "--attr" => {
         consumed: false,
-        remaining: Some(Some(token!(--"attr", last))),
+        remaining: Some(Some(token!(--"attr"))),
         suggestions: [],
     });
     test_complete!(complete_consumed, PathBuf, "path remaining" => {
         consumed: true,
-        remaining: Some(Some(token!("remaining", last))),
+        remaining: Some(Some(token!("remaining"))),
         suggestions: [],
     });
 

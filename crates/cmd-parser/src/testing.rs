@@ -1,21 +1,14 @@
 #[macro_export]
 macro_rules! token {
-    (--$text:literal $(, $mod:ident)?) => {
-        $crate::tokens::Token::from_parts (
-            $crate::tokens::TokenValue::Attribute($crate::tokens::RawLexeme::new($text)),
-            token!(@internal is_last $($mod)?),
-        )
+    (--$text:literal) => {
+        $crate::tokens::Token::Attribute($crate::tokens::RawLexeme::new($text))
     };
-    ($text:literal $(, $mod:ident)?) => {
-        $crate::tokens::Token::from_parts (
-            $crate::tokens::TokenValue::Text($crate::tokens::RawLexeme::new($text)),
-            token!(@internal is_last $($mod)?),
-        )
+    ($text:literal) => {
+        $crate::tokens::Token::Text($crate::tokens::RawLexeme::new($text))
     };
-
-    (@internal is_last last) => {true};
-    (@internal is_last ) => {false};
 }
+
+#[doc(inline)]
 pub use token;
 
 #[macro_export]
