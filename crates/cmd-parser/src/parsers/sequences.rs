@@ -6,13 +6,12 @@ use std::collections::{BTreeSet, HashSet, LinkedList, VecDeque};
 use std::hash::Hash;
 use std::marker::PhantomData;
 
-/// Parse any one-dimensional collection of [`Parsable`] items
+/// Parse any one-dimensional collection of items
 ///
 /// See [`CollectionParser`] documentation for details.
 pub trait ParsableCollection<Ctx> {
-    /// The type of a collection member. This value must be [`Parsable`] e.g. there must be a
-    /// default parser for it.
-    type Item: Parsable<Ctx>;
+    /// The type of a collection member.
+    type Item;
 
     /// Adds an item to the collection.
     fn append(&mut self, item: Self::Item);
@@ -26,7 +25,7 @@ macro_rules! impl_parsable_collection {
         }
 
         impl<Ctx, T: Parsable<Ctx> $(+ $bound_1 $(+ $bound)*)?> Parsable<Ctx> for $ty {
-            type Parser = CollectionParser<Ctx, Self>;
+            type Parser = CollectionParser<Ctx, Self, T::Parser>;
         }
     };
 }
@@ -120,7 +119,7 @@ impl_parsable_collection! {BTreeSet<T> where T: Eq + Hash + Ord {
 /// }
 ///
 /// impl<Ctx> Parsable<Ctx> for MyBitArray {
-///     type Parser = CollectionParser<Ctx, Self>;
+///     type Parser = CollectionParser<Ctx, Self, <bool as Parsable<Ctx>>::Parser>;
 /// }
 ///
 /// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
@@ -129,18 +128,22 @@ impl_parsable_collection! {BTreeSet<T> where T: Eq + Hash + Ord {
 /// # Ok(())
 /// # }
 /// ```
-pub struct CollectionParser<Ctx, C: ParsableCollection<Ctx>> {
+pub struct CollectionParser<Ctx, C: ParsableCollection<Ctx>, P: Parser<Ctx, Value = C::Item>> {
+    _ctx_phantom: PhantomData<Ctx>,
     _collection_phanton: PhantomData<C>,
-    inner_parser: <C::Item as Parsable<Ctx>>::Parser,
+    inner_parser: P,
 }
 
-impl<Ctx, C: ParsableCollection<Ctx> + Default> Parser<Ctx> for CollectionParser<Ctx, C> {
+impl<Ctx, C: ParsableCollection<Ctx> + Default, P: Parser<Ctx, Value = C::Item>> Parser<Ctx>
+    for CollectionParser<Ctx, C, P>
+{
     type Value = C;
 
     fn create(ctx: Ctx) -> Self {
         CollectionParser {
+            _ctx_phantom: PhantomData,
             _collection_phanton: PhantomData,
-            inner_parser: <C::Item as Parsable<Ctx>>::new_parser(ctx),
+            inner_parser: P::create(ctx),
         }
     }
 
@@ -243,7 +246,7 @@ impl<Ctx, T> Parsable<Ctx> for PhantomData<T> {
 /// are rearely need to be used on its own due to the fact that corresponding tuples implement
 /// [`Parsable`] trait.
 ///
-/// For tuple to be parsible, every type it contains must implement [`Parsable`] trait that
+/// For a tuple to be parsable, every type it contains must implement [`Parsable`] trait that
 /// supports compatible contexts.
 ///
 /// # Examples
@@ -263,20 +266,20 @@ pub mod tuples {
         ($parser_name:ident, $param_first:ident $($param:ident)*) => {
             /// Parser implementation of a tuple of a specific size
             #[allow(non_snake_case)]
-            pub struct $parser_name<Ctx, $param_first: Parsable<Ctx>, $($param: Parsable<Ctx>),*> {
-                $param_first: $param_first::Parser,
-                $(
-                    $param: $param::Parser,
-                )*
+            pub struct $parser_name<Ctx, $param_first: Parser<Ctx>, $($param: Parser<Ctx>),*> {
+                _ctx_phantom: PhantomData<Ctx>,
+                $param_first: $param_first,
+                $( $param: $param, )*
             }
 
-            impl<Ctx: Clone, $param_first: Parsable<Ctx>, $($param: Parsable<Ctx>),*> Parser<Ctx> for $parser_name<Ctx, $param_first, $($param),*> {
-                type Value = ($param_first, $($param,)*);
+            impl<Ctx: Clone, $param_first: Parser<Ctx>, $($param: Parser<Ctx>),*> Parser<Ctx> for $parser_name<Ctx, $param_first, $($param),*> {
+                type Value = ($param_first::Value, $($param::Value,)*);
 
                 fn create(ctx: Ctx) -> Self {
                     $parser_name {
-                        $param_first: $param_first::new_parser(ctx.clone()),
-                        $($param: $param::new_parser(ctx.clone())),*
+                        _ctx_phantom: PhantomData,
+                        $param_first: $param_first::create(ctx.clone()),
+                        $($param: $param::create(ctx.clone())),*
                     }
                 }
 
@@ -326,7 +329,7 @@ pub mod tuples {
             }
 
             impl<Ctx: Clone, $param_first: Parsable<Ctx>, $($param: Parsable<Ctx>),*> Parsable<Ctx> for ($param_first, $($param,)*) {
-                type Parser = $parser_name<Ctx, $param_first, $($param),*>;
+                type Parser = $parser_name<Ctx, $param_first::Parser, $($param::Parser),*>;
             }
         }
     }
@@ -351,22 +354,24 @@ pub mod tuples {
 
 /// Parser implementation for [`Option<T>`]
 ///
-/// This parser calls delegates the parsing and completion to the default parser of its generic
+/// This parser calls delegates the parsing and completion to the parser passed as its generic
 /// parameter type and returns `Some` if the parsing succeded, `None` if the inner parser reported
 /// an unrecognized attribute or if the token stream is empty. If the inner parser fails due to an
 /// error, this parser fails also.
 ///
 /// When performing completion, the value is always considered to be consumed.
-pub struct OptionParser<Ctx, T: Parsable<Ctx>> {
-    inner_parser: T::Parser,
+pub struct OptionParser<Ctx, P: Parser<Ctx>> {
+    _ctx_phantom: PhantomData<Ctx>,
+    inner_parser: P,
 }
 
-impl<Ctx, T: Parsable<Ctx>> Parser<Ctx> for OptionParser<Ctx, T> {
-    type Value = Option<T>;
+impl<Ctx, T: Parser<Ctx>> Parser<Ctx> for OptionParser<Ctx, T> {
+    type Value = Option<T::Value>;
 
     fn create(ctx: Ctx) -> Self {
         OptionParser {
-            inner_parser: T::new_parser(ctx),
+            _ctx_phantom: PhantomData,
+            inner_parser: T::create(ctx),
         }
     }
 
@@ -394,13 +399,13 @@ impl<Ctx, T: Parsable<Ctx>> Parser<Ctx> for OptionParser<Ctx, T> {
 }
 
 impl<Ctx, T: Parsable<Ctx>> Parsable<Ctx> for Option<T> {
-    type Parser = OptionParser<Ctx, T>;
+    type Parser = OptionParser<Ctx, T::Parser>;
 }
 
 /// Generic fallible transformation between two types for parsing
 ///
 /// See the documentation for [`TransformParser`] for more details.
-pub trait ParsableTransformation<Ctx, O> {
+pub trait ParsableTransformation<O> {
     /// The type that is going to be parsed using its default parser and then transformed.
     type Input;
 
@@ -411,38 +416,126 @@ pub trait ParsableTransformation<Ctx, O> {
 /// Parser implementation that performs type converstion and validation after the parsing is
 /// complete
 ///
-/// This parser delegates the parsing and completion to the underlying parser. When parsing is
-/// complete, it calls the [`ParsableTransformation`]'s `transform` method which maps the parsed
+/// This parser delegates the parsing and completion to the underlying parser. If parsing is
+/// successfull, it calls the [`ParsableTransformation`]'s `transform` method which maps the parsed
 /// value onto another type.
+///
+/// # Examples
 ///
 /// This parser can be used for type converstion (as it is done for `T -> Box<T>`) or for data
 /// validation.
-pub struct TransformParser<Ctx, T, O>
+///
+/// For example, you can implement [`Parsable`] for a newtype that would use the inner data's
+/// default parser implementation (without using derive macro):
+///
+/// ```
+/// use cmd_parser::{Parsable, parse};
+/// use cmd_parser::error::ParseError;
+/// use cmd_parser::parsers::{TransformParser, ParsableTransformation};
+///
+/// #[derive(Debug, PartialEq, Eq)]
+/// struct PostId(usize);
+///
+/// impl ParsableTransformation<PostId> for PostId {
+///     type Input = usize;
+///
+///     fn transform(input: usize) -> Result<PostId, ParseError<'static>> {
+///         Ok(PostId(input))
+///     }
+/// }
+///
+/// impl<Ctx> Parsable<Ctx> for PostId {
+///     type Parser = TransformParser<Ctx, <usize as Parsable<Ctx>>::Parser, PostId, PostId>;
+/// }
+///
+/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// let value = parse::<_, PostId>("42", ())?;
+/// assert_eq!(value, PostId(42));
+/// # Ok(())
+/// # }
+/// ```
+///
+/// Note that the example above can be greatly simplified by using a Parsable derive macro.
+/// Although the implementation details are going to be different, the following example is
+/// functionally equivalent to the one above:
+///
+/// ```
+/// # use cmd_parser::{Parsable, parse};
+/// #
+/// #[derive(Debug, PartialEq, Eq, Parsable)]
+/// struct PostId(usize);
+///
+/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// let value = parse::<_, PostId>("42", ())?;
+/// assert_eq!(value, PostId(42));
+/// # Ok(())
+/// # }
+/// ```
+///
+/// It is not important which trait implements [`ParsableTransformation`]. The trait is designed
+/// this way to circumvent the limitations of the Rust's type system: foreign traits cannot be
+/// implemented for foreign types. Also, it allows the user to define multiple different
+/// transformations for the same type which is useful for data validation.
+///
+/// ```
+/// use cmd_parser::{Parsable, parse_parser};
+/// use cmd_parser::error::ParseError;
+/// use cmd_parser::parsers::{TransformParser, ParsableTransformation};
+///
+/// struct IsPowerOfTwo;
+///
+/// impl ParsableTransformation<u64> for IsPowerOfTwo {
+///     type Input = u64;
+///
+///     fn transform(input: u64) -> Result<u64, ParseError<'static>> {
+///         if input.is_power_of_two() {
+///             Ok(input)
+///         } else {
+///             Err(ParseError::custom("not a power of two"))
+///         }
+///     }
+/// }
+///
+/// type PowerOfTwoParser<Ctx> =
+///     TransformParser<Ctx, <u64 as Parsable<Ctx>>::Parser, IsPowerOfTwo, u64>;
+///
+/// # fn main() {
+/// assert!(parse_parser::<_, PowerOfTwoParser<()>>("16", ()).is_ok());
+/// assert!(parse_parser::<_, PowerOfTwoParser<()>>("14", ()).is_err());
+/// # }
+/// ```
+pub struct TransformParser<Ctx, P, T, O>
 where
-    T: ParsableTransformation<Ctx, O>,
+    P: Parser<Ctx>,
+    T: ParsableTransformation<O, Input = P::Value>,
     T::Input: Parsable<Ctx>,
 {
+    _ctx_phantom: PhantomData<Ctx>,
     _out_phantom: PhantomData<O>,
-    parser: <T::Input as Parsable<Ctx>>::Parser,
+    _input_phantom: PhantomData<T>,
+    parser: P,
 }
 
-impl<Ctx, T, O> Parser<Ctx> for TransformParser<Ctx, T, O>
+impl<Ctx, P, T, O> Parser<Ctx> for TransformParser<Ctx, P, T, O>
 where
-    T: ParsableTransformation<Ctx, O>,
+    P: Parser<Ctx>,
+    T: ParsableTransformation<O, Input = P::Value>,
     T::Input: Parsable<Ctx>,
 {
     type Value = O;
 
     fn create(ctx: Ctx) -> Self {
         TransformParser {
+            _ctx_phantom: PhantomData,
             _out_phantom: PhantomData,
-            parser: T::Input::new_parser(ctx),
+            _input_phantom: PhantomData,
+            parser: P::create(ctx),
         }
     }
 
     fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
         let (value, remaining) = self.parser.parse(input)?;
-        let transformed = <T as ParsableTransformation<Ctx, O>>::transform(value)?;
+        let transformed = <T as ParsableTransformation<O>>::transform(value)?;
         Ok((transformed, remaining))
     }
 
@@ -451,7 +544,7 @@ where
     }
 }
 
-impl<Ctx, T: Parsable<Ctx>> ParsableTransformation<Ctx, Box<T>> for T {
+impl<T> ParsableTransformation<Box<T>> for T {
     type Input = Self;
 
     fn transform(input: Self::Input) -> Result<Box<T>, ParseError<'static>> {
@@ -460,7 +553,7 @@ impl<Ctx, T: Parsable<Ctx>> ParsableTransformation<Ctx, Box<T>> for T {
 }
 
 impl<Ctx, T: Parsable<Ctx>> Parsable<Ctx> for Box<T> {
-    type Parser = TransformParser<Ctx, T, Box<T>>;
+    type Parser = TransformParser<Ctx, T::Parser, T, Box<T>>;
 }
 
 #[cfg(test)]

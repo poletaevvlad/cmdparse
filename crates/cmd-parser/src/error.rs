@@ -14,6 +14,7 @@ enum ParseErrorVariant<'a> {
     Unknown(Token<'a>),
     TokenRequired,
     UnbalancedParenthesis,
+    Custom(Cow<'static, str>),
 }
 
 #[derive(Debug, PartialEq)]
@@ -51,6 +52,12 @@ impl<'a> ParseError<'a> {
         }
     }
 
+    pub fn custom(message: impl Into<Cow<'static, str>>) -> Self {
+        ParseError {
+            variant: ParseErrorVariant::Custom(message.into()),
+            expected: None,
+        }
+    }
     pub fn expected(mut self, expected: impl Into<Cow<'static, str>>) -> Self {
         self.expected = Some(expected.into());
         self
@@ -84,6 +91,7 @@ impl<'a> fmt::Display for ParseError<'a> {
             },
             ParseErrorVariant::TokenRequired => f.write_str("not enough tokens")?,
             ParseErrorVariant::UnbalancedParenthesis => f.write_str("unbalanced parenthesis")?,
+            ParseErrorVariant::Custom(message) => f.write_str(message)?,
         }
 
         if let Some(expected) = &self.expected {
