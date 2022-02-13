@@ -349,34 +349,6 @@ pub mod tuples {
     gen_parsable_tuple!(TupleParser16, T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 T12 T13 T14 T15 T16);
 }
 
-pub struct BoxParser<Ctx, T: Parsable<Ctx>> {
-    inner_parser: T::Parser,
-}
-
-impl<Ctx, T: Parsable<Ctx>> Parser<Ctx> for BoxParser<Ctx, T> {
-    type Value = Box<T>;
-
-    fn create(ctx: Ctx) -> Self {
-        BoxParser {
-            inner_parser: T::new_parser(ctx),
-        }
-    }
-
-    fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
-        self.inner_parser
-            .parse(input)
-            .map(|(result, remaining)| (Box::new(result), remaining))
-    }
-
-    fn complete<'a>(&self, input: TokenStream<'a>) -> CompletionResult<'a> {
-        self.inner_parser.complete(input)
-    }
-}
-
-impl<Ctx, T: Parsable<Ctx>> Parsable<Ctx> for Box<T> {
-    type Parser = BoxParser<Ctx, T>;
-}
-
 /// Parser implementation for [`Option<T>`]
 ///
 /// This parser calls delegates the parsing and completion to the default parser of its generic
@@ -423,6 +395,72 @@ impl<Ctx, T: Parsable<Ctx>> Parser<Ctx> for OptionParser<Ctx, T> {
 
 impl<Ctx, T: Parsable<Ctx>> Parsable<Ctx> for Option<T> {
     type Parser = OptionParser<Ctx, T>;
+}
+
+/// Generic fallible transformation between two types for parsing
+///
+/// See the documentation for [`TransformParser`] for more details.
+pub trait ParsableTransformation<Ctx, O> {
+    /// The type that is going to be parsed using its default parser and then transformed.
+    type Input;
+
+    /// Performs the transformation.
+    fn transform(input: Self::Input) -> Result<O, ParseError<'static>>;
+}
+
+/// Parser implementation that performs type converstion and validation after the parsing is
+/// complete
+///
+/// This parser delegates the parsing and completion to the underlying parser. When parsing is
+/// complete, it calls the [`ParsableTransformation`]'s `transform` method which maps the parsed
+/// value onto another type.
+///
+/// This parser can be used for type converstion (as it is done for `T -> Box<T>`) or for data
+/// validation.
+pub struct TransformParser<Ctx, T, O>
+where
+    T: ParsableTransformation<Ctx, O>,
+    T::Input: Parsable<Ctx>,
+{
+    _out_phantom: PhantomData<O>,
+    parser: <T::Input as Parsable<Ctx>>::Parser,
+}
+
+impl<Ctx, T, O> Parser<Ctx> for TransformParser<Ctx, T, O>
+where
+    T: ParsableTransformation<Ctx, O>,
+    T::Input: Parsable<Ctx>,
+{
+    type Value = O;
+
+    fn create(ctx: Ctx) -> Self {
+        TransformParser {
+            _out_phantom: PhantomData,
+            parser: T::Input::new_parser(ctx),
+        }
+    }
+
+    fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
+        let (value, remaining) = self.parser.parse(input)?;
+        let transformed = <T as ParsableTransformation<Ctx, O>>::transform(value)?;
+        Ok((transformed, remaining))
+    }
+
+    fn complete<'a>(&self, input: TokenStream<'a>) -> CompletionResult<'a> {
+        self.parser.complete(input)
+    }
+}
+
+impl<Ctx, T: Parsable<Ctx>> ParsableTransformation<Ctx, Box<T>> for T {
+    type Input = Self;
+
+    fn transform(input: Self::Input) -> Result<Box<T>, ParseError<'static>> {
+        Ok(Box::new(input))
+    }
+}
+
+impl<Ctx, T: Parsable<Ctx>> Parsable<Ctx> for Box<T> {
+    type Parser = TransformParser<Ctx, T, Box<T>>;
 }
 
 #[cfg(test)]

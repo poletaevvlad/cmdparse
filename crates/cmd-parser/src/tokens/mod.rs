@@ -91,12 +91,6 @@ impl<T> TokenValue<T> {
     }
 }
 
-impl<'a> TokenValue<RawLexeme<'a>> {
-    pub fn parse_string(self) -> TokenValue<Cow<'a, str>> {
-        self.map(RawLexeme::parse_string)
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Token<'a> {
     value: TokenValue<RawLexeme<'a>>,
