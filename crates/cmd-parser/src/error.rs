@@ -1,9 +1,6 @@
-use crate::tokens::{Token, TokenStream};
+use crate::tokens::{Token, TokenStream, UnbalancedParenthesis};
 use std::borrow::Cow;
 use std::fmt;
-
-#[derive(Debug)]
-pub struct UnbalancedParenthesis;
 
 #[derive(Debug, PartialEq)]
 enum ParseErrorVariant<'a> {
@@ -103,6 +100,24 @@ impl<'a> fmt::Display for ParseError<'a> {
 pub enum ParseFailure<'a> {
     Error(ParseError<'a>),
     Unrecognized(UnrecognizedToken<'a>),
+}
+
+impl<'a> ParseFailure<'a> {
+    pub fn as_error(&self) -> Option<&ParseError<'a>> {
+        if let ParseFailure::Error(error) = self {
+            Some(error)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_unrecognized(&self) -> Option<&UnrecognizedToken<'a>> {
+        if let ParseFailure::Unrecognized(unrecognized) = self {
+            Some(unrecognized)
+        } else {
+            None
+        }
+    }
 }
 
 impl<'a, E: Into<ParseError<'a>>> From<E> for ParseFailure<'a> {
