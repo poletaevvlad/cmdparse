@@ -1,3 +1,9 @@
+#![doc(hidden)]
+//! These macro are intended for testing the implementation in this crate and in the order crates
+//! that are part of the `cmd_parser` repository. Although these macros are public, they can be
+//! changed, removed, renamed at any point for any reason.
+
+#[doc(hidden)]
 #[macro_export]
 macro_rules! token {
     (--$text:literal) => {
@@ -8,9 +14,9 @@ macro_rules! token {
     };
 }
 
-#[doc(inline)]
 pub use token;
 
+#[doc(hidden)]
 #[macro_export]
 macro_rules! test_parse {
     ($name:ident, $type:ty, $input:literal => Ok($value:expr, $next_token:expr)) => {
@@ -58,8 +64,10 @@ macro_rules! test_parse {
         }
     };
 }
+
 pub use test_parse;
 
+#[doc(hidden)]
 #[macro_export]
 macro_rules! test_complete {
     ($name:ident, $type:ty, $input:literal => { consumed: $consumed:expr, remaining: $remaining:expr, suggestions: [$($suggestion:expr),*] $(,)?}) => {
@@ -75,4 +83,5 @@ macro_rules! test_complete {
         }
     };
 }
+
 pub use test_complete;
