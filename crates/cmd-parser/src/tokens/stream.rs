@@ -1,7 +1,7 @@
 use super::lexing::{skip_ws, take_lexeme, Lexeme};
 use super::{Token, UnbalancedParenthesis};
-use crate::error::ParseError;
-use crate::{CompletionResult, ParseFailure, ParseResult};
+use crate::error::{ParseError, ParseFailure};
+use crate::{CompletionResult, ParseResult};
 
 /// Representation of the input as a sequence of tokens
 ///

@@ -41,8 +41,8 @@ impl<'a> FieldView<'a> {
                             required_index += 1;
                             continue
                         }
-                        Err(error @ ::cmd_parser::ParseFailure::Error(_)) => return Err(error),
-                        Err(::cmd_parser::ParseFailure::Unrecognized(unrecognized)) => #unrecognized_variant,
+                        Err(error @ ::cmd_parser::error::ParseFailure::Error(_)) => return Err(error),
+                        Err(::cmd_parser::error::ParseFailure::Unrecognized(unrecognized)) => #unrecognized_variant,
                     }
                 }
             }

@@ -1,6 +1,6 @@
-use crate::error::ParseError;
+use crate::error::{ParseError, ParseFailure};
 use crate::tokens::{Token, TokenStream};
-use crate::{CompletionResult, Parsable, ParseFailure, ParseResult, Parser};
+use crate::{CompletionResult, Parsable, ParseResult, Parser};
 use std::cmp::Ord;
 use std::collections::{BTreeSet, HashSet, LinkedList, VecDeque};
 use std::hash::Hash;
