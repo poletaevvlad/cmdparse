@@ -262,18 +262,16 @@ pub mod tuples {
         ($parser_name:ident, $param_first:ident $($param:ident)*) => {
             /// Parser implementation of a tuple of a specific size
             #[allow(non_snake_case)]
-            pub struct $parser_name<Ctx, $param_first: Parser<Ctx>, $($param: Parser<Ctx>),*> {
-                _ctx_phantom: PhantomData<Ctx>,
+            pub struct $parser_name<$param_first, $($param),*> {
                 $param_first: $param_first,
                 $( $param: $param, )*
             }
 
-            impl<Ctx: Clone, $param_first: Parser<Ctx>, $($param: Parser<Ctx>),*> Parser<Ctx> for $parser_name<Ctx, $param_first, $($param),*> {
+            impl<Ctx: Clone, $param_first: Parser<Ctx>, $($param: Parser<Ctx>),*> Parser<Ctx> for $parser_name<$param_first, $($param),*> {
                 type Value = ($param_first::Value, $($param::Value,)*);
 
                 fn create(ctx: Ctx) -> Self {
                     $parser_name {
-                        _ctx_phantom: PhantomData,
                         $param_first: $param_first::create(ctx.clone()),
                         $($param: $param::create(ctx.clone())),*
                     }
@@ -325,7 +323,7 @@ pub mod tuples {
             }
 
             impl<Ctx: Clone, $param_first: Parsable<Ctx>, $($param: Parsable<Ctx>),*> Parsable<Ctx> for ($param_first, $($param,)*) {
-                type Parser = $parser_name<Ctx, $param_first::Parser, $($param::Parser),*>;
+                type Parser = $parser_name<$param_first::Parser, $($param::Parser),*>;
             }
         }
     }

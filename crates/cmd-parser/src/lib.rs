@@ -327,7 +327,7 @@ fn parse_with_parser<Ctx, P: Parser<Ctx>>(input: &str, parser: P) -> Result<P::V
 /// use cmd_parser::parse_parser;
 /// use cmd_parser::parsers::{IntegerParser, StringParser, tuples::TupleParser2};
 ///
-/// type ExplicitParser = TupleParser2<(), IntegerParser<u64>, StringParser>;
+/// type ExplicitParser = TupleParser2<IntegerParser<u64>, StringParser>;
 /// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
 /// let value = parse_parser::<_, ExplicitParser>("42 fourty-two", ())?;
 /// assert_eq!(value, (42, "fourty-two".to_string()));
