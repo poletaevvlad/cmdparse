@@ -187,6 +187,38 @@ impl<'a> Token<'a> {
 #[derive(Debug)]
 pub struct UnbalancedParenthesis;
 
+/// Computes all possible completions for a `token` from the possible complete token set of `variants`
+///
+/// `variants` **must** be ordered. If `variants` is not ordered the behaviour of this function is
+/// unspecified.
+///
+/// `complete_variants` returns an iterator of string slices from variants that start with `token`
+/// and with prefix removed.
+///
+/// # Example
+///
+/// ```
+/// use cmd_parser::tokens::complete_variants;
+///
+/// // Note that VARIANTS is sorted
+/// const VARIANTS: &[&str] = &["fifth", "first", "fourth", "second", "third"];
+///
+/// let suggestions: Vec<_> = complete_variants("fi", VARIANTS).collect();
+/// assert_eq!(suggestions, vec!["fth", "rst"]);
+/// ```
+pub fn complete_variants<'a, 'b>(
+    token: &'b str,
+    variants: &'b [&'a str],
+) -> impl Iterator<Item = &'a str> + 'b {
+    let index = variants.binary_search(&token).unwrap_or_else(|idx| idx);
+    variants[index..]
+        .iter()
+        .map(move |variant| variant.strip_prefix(token))
+        .take_while(Option::is_some)
+        .map(|suggestion| suggestion.unwrap()) // Iterator::take_while is unstable, unwrap is safe, Nones are filtered out
+        .filter(|suggestion| !suggestion.is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     use super::RawLexeme;

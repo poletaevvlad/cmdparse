@@ -2,7 +2,6 @@ pub mod error;
 pub mod parsers;
 pub mod testing;
 pub mod tokens;
-pub mod utils;
 
 use std::borrow::Cow;
 use std::collections::BTreeSet;

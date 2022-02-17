@@ -114,7 +114,7 @@ pub(crate) fn gen_complete_enum(
             Some(Ok((::cmd_parser::tokens::Token::Text(text), remaining))) => {
                 let text = text.parse_string();
                 if remaining.is_all_consumed() {
-                    suggestions.extend(::cmd_parser::utils::complete_variants(&text, VARIANT_NAMES).map(::std::borrow::Cow::Borrowed));
+                    suggestions.extend(::cmd_parser::tokens::complete_variants(&text, VARIANT_NAMES).map(::std::borrow::Cow::Borrowed));
                 } else {
                     match ::std::borrow::Borrow::<str>::borrow(&text) {
                         #variants_complete

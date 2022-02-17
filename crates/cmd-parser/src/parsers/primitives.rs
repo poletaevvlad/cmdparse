@@ -1,6 +1,5 @@
 use crate::error::{ParseError, UnrecognizedToken};
-use crate::tokens::{Token, TokenStream};
-use crate::utils::complete_variants;
+use crate::tokens::{complete_variants, Token, TokenStream};
 use crate::{CompletionResult, Parsable, ParseResult, Parser};
 use std::borrow::{Borrow, Cow};
 use std::fmt;

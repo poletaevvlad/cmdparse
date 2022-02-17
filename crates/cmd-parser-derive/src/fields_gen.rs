@@ -293,7 +293,7 @@ pub(crate) fn gen_complete_struct(ctx: &CodegenContext, fields: &FieldsSet<'_>) 
                         ::cmd_parser::tokens::Token::Attribute(attribute) if remaining.is_all_consumed() => {
                             let text = attribute.parse_string();
                             suggestions.extend(
-                                ::cmd_parser::utils::complete_variants(&text, ATTRIBUTE_NAMES)
+                                ::cmd_parser::tokens::complete_variants(&text, ATTRIBUTE_NAMES)
                                     .map(::std::borrow::Cow::Borrowed)
                             );
 
