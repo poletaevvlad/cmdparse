@@ -425,6 +425,302 @@ pub trait Parser<Ctx> {
 ///
 /// This trait can be proceduraly derived for any struct or enum if all its inner types are
 /// `Parsable` or have exlicit parser specified.
+///
+/// # Derive macro
+///
+/// The `Parsable` derive macro accepts attributes that modify parsing behavior. These attributes
+/// are specified in the form `#[cmd(...)]` attributes can be specifed in the same parenthesis
+/// separated by commas or separately: `#[cmd(default, attr(field))]` and `#[cmd(default)]
+/// #[cmd(attr(field))]` are equivalent.
+///
+/// ## Type attribute
+///
+/// The following attributes are applied for the entire struct or enum for which the trait is being
+/// derived.
+///
+/// ### `ctx = "type-name"`, `ctx_bound = "trait-names"`
+///
+/// Restricts the type of the parsing context in case of `ctx` attribute or bounds the generic
+/// parsting context to the specific trait or collection of traits in case of `ctx_bound`
+/// attribute. This is needed when one or more inner parser restricts the type of the context it
+/// uses.
+///
+/// The following example demonstrates the creation of a custom parser that requires a specific
+/// parsing context and restricting the context type in the derived trait implementation.
+///
+/// ```
+/// use cmd_parser::{parse, tokens::TokenStream, CompletionResult, Parsable, Parser, ParseResult};
+///
+/// #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+/// enum LengthUnit { Cm, In }
+///
+/// #[derive(Clone)]
+/// struct ParsingContext {
+///     unit: LengthUnit,
+/// }
+///
+/// #[derive(Debug, PartialEq)]
+/// struct Length(f64, LengthUnit);
+///
+/// struct LengthParser {
+///     unit: LengthUnit,
+///     float_parser: <f64 as Parsable<ParsingContext>>::Parser,
+/// }
+///
+/// impl Parser<ParsingContext> for LengthParser {
+///     type Value = Length;
+///
+///     fn create(ctx: ParsingContext) -> Self {
+///         LengthParser {
+///             unit: ctx.unit,
+///             float_parser: <f64 as Parsable<_>>::new_parser(ctx),
+///         }
+///     }
+///
+///     fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
+///         let (value, remaining) = Parser::<ParsingContext>::parse(&self.float_parser, input)?;
+///         Ok((Length(value, self.unit), remaining))
+///     }
+///
+///     fn complete<'a>(&self, input: TokenStream<'a>) -> CompletionResult<'a> {
+///         Parser::<ParsingContext>::complete(&self.float_parser, input)
+///     }
+/// }
+///
+/// impl Parsable<ParsingContext> for Length {
+///     type Parser = LengthParser;
+/// }
+///
+/// #[derive(Debug, PartialEq, Parsable)]
+/// #[cmd(ctx = "ParsingContext")]
+/// struct Size {
+///     height: Length,
+///     width: Length,
+/// }
+///
+/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// assert_eq!(
+///     parse::<_, Size>("10 20", ParsingContext{ unit: LengthUnit::Cm })?,
+///     Size {
+///         height: Length(10.0, LengthUnit::Cm),
+///         width: Length(20.0, LengthUnit::Cm)
+///     }
+/// );
+/// # Ok(())
+/// # }
+/// ```
+///
+/// ## Field attributes
+///
+/// The following attributes can be used for the struct's or enum variant's fields.
+///
+/// ### `parser = "parser-type-name"`
+///
+/// Specifies a custom parser used for a field. Without this attribute the default parser specified
+/// by the implementation of `Parser` trait is used.
+///
+/// This attribute is useful in situations where the required parser is different from the parser
+/// defined by the `Parsable` trait or when implementation of `Parsable` is not possible (e.g. when
+/// dealing with types defined in a foreign crate).
+///
+/// The following example demonstrates how to use [`TransformParser`](parsers::TransformParser) for
+/// data validation.
+///
+/// ```
+/// use cmd_parser::parsers::{TransformParser, ParsableTransformation};
+/// use cmd_parser::error::ParseError;
+/// use cmd_parser::Parsable;
+///
+/// struct Number01RangeValidator;
+///
+/// impl ParsableTransformation<f64> for Number01RangeValidator {
+///     type Input = f64;
+///
+///     fn transform(input: Self::Input) -> Result<f64, ParseError<'static>> {
+///         if input < 0.0 || input >= 1.0 {
+///             Err(ParseError::custom("must be between 0 and 1"))
+///         } else {
+///             Ok(input)
+///         }
+///     }
+/// }
+///
+/// #[derive(Debug, Parsable)]
+/// struct Point(
+///     #[cmd(parser = "TransformParser<CmdParserCtx, <f64 as Parsable<CmdParserCtx>>::Parser, Number01RangeValidator, f64>")] f64,
+///     #[cmd(parser = "TransformParser<CmdParserCtx, <f64 as Parsable<CmdParserCtx>>::Parser, Number01RangeValidator, f64>")] f64,
+/// );
+/// ```
+///
+/// ### `default` or `default = "value"` without `attr`
+///
+/// If the `default` atttribute is used on a field than this attribute will not be parsed, instead
+/// when constructing the containing instance a default value (if value is not specified) or a
+/// specific value (specified after `=` sign).
+///
+/// ```
+/// use cmd_parser::{Parsable, parse};
+///
+/// #[derive(Debug, PartialEq, Eq, Parsable)]
+/// struct MyStruct(#[cmd(default)] u8, #[cmd(default = "5")] u8, u8);
+///
+/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// assert_eq!(parse::<_, MyStruct>("24", ())?, MyStruct(0, 5, 24));
+/// # Ok(())
+/// # }
+/// ```
+///
+/// ### `attr(attribute = "value")` or `attr(attribute)`
+///
+/// Indicates that the field is optional, it can be specified using a named attribute. This
+/// attribute comes in two variants: when "value" is specified, the field's value is taken from the
+/// expression in the attribute, otherwise the attribute token must be followed by the field
+/// value's tokens.
+///
+/// ```
+/// use cmd_parser::{Parsable, parse};
+///
+/// #[derive(Debug, PartialEq, Eq, Parsable)]
+/// enum Color{ Red, Green, Blue }
+///
+/// impl Default for Color {
+///     fn default() -> Self {
+///         Color::Green
+///     }
+/// }
+///
+/// #[derive(Debug, PartialEq, Eq, Parsable)]
+/// struct MyStruct {
+///     #[cmd(attr(important = "true"))] is_important: bool,
+///     #[cmd(attr(color))] color: Color,
+/// }
+///
+/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// assert_eq!(
+///     parse::<_, MyStruct>("--important", ())?,
+///     MyStruct { color: Color::Green, is_important: true },
+/// );
+/// assert_eq!(
+///     parse::<_, MyStruct>("--color red", ())?,
+///     MyStruct { color: Color::Red, is_important: false },
+/// );
+/// # Ok(())
+/// # }
+/// ```
+///
+/// #### In combination with `default = "value"`
+///
+/// If an optional field's value is not specified the default valus is used instead as determined
+/// by the implementation of [`Default`] trait. This can be overridden by specifying a default
+/// value using `default` attribute.
+///
+/// ```
+/// use cmd_parser::{Parsable, parse};
+///
+/// #[derive(Debug, PartialEq, Eq, Parsable)]
+/// struct MyStruct(#[cmd(default = "5", attr(value))] u8);
+///
+/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// assert_eq!(parse::<_, MyStruct>("--value 10", ())?, MyStruct(10));
+/// assert_eq!(parse::<_, MyStruct>("", ())?, MyStruct(5));
+/// # Ok(())
+/// # }
+/// ```
+///
+/// ## Enum variant attributes
+///
+/// These attributes are applicable to enum varaints. Generally, `cmd_parser` expects a
+/// discriminator&mdash;the variant's name in kebab-case followed by tokens for its fields if any
+/// exist.
+///
+/// ### `rename = "name"`
+///
+/// Changes the name of the variant's discriminator. The variant cannot be parsed using its
+/// original name.
+///
+/// ```
+/// use cmd_parser::{Parsable, parse};
+///
+/// #[derive(Debug, PartialEq, Eq, Parsable)]
+/// enum MyEnum {
+///     #[cmd(rename = "first")] One,
+///     #[cmd(rename = "second")] Two,
+/// }
+///
+/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// assert_eq!(parse::<_, MyEnum>("first", ())?, MyEnum::One);
+/// assert!(parse::<_, MyEnum>("one", ()).is_err());
+/// # Ok(())
+/// # }
+/// ```
+///
+/// ### `alias = "alias"`
+///
+/// Adds an alias for the variant. Variant can have an arbitrary number of aliases and the value
+/// can be parsed using any of this. Specifying an alias does not prevent the usage of the
+/// variant's original name.
+///
+/// ```
+/// use cmd_parser::{Parsable, parse};
+///
+/// #[derive(Debug, PartialEq, Eq, Parsable)]
+/// enum Color {
+///     Black,
+///     White,
+///     #[cmd(alias = "grey")] Gray,
+/// }
+///
+/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// assert_eq!(parse::<_, Color>("grey", ())?, Color::Gray);
+/// assert_eq!(parse::<_, Color>("gray", ())?, Color::Gray);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// ### `ignore`
+///
+/// Disables the parsing of the variant. Note that this does not prevent assigning aliases to the
+/// variant.
+///
+/// ```
+/// use cmd_parser::{Parsable, parse};
+///
+/// #[derive(Debug, PartialEq, Eq, Parsable)]
+/// enum MyEnum {
+///     Command,
+///     #[cmd(ignore)] NonInteractive,
+/// }
+///
+/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// assert!(parse::<_, MyEnum>("non-interactive", ()).is_err());
+/// # Ok(())
+/// # }
+/// ```
+///
+/// ### `transparent`
+///
+/// Indicates that a variant can be parsed without a descriminator. This can be used when spliting
+/// a large enum into several smaller ones is desirable.
+///
+/// ```
+/// use cmd_parser::{Parsable, parse};
+///
+/// #[derive(Debug, PartialEq, Eq, Parsable)]
+/// enum Subcommand { First, Second }
+///
+/// #[derive(Debug, PartialEq, Eq, Parsable)]
+/// enum Command {
+///     #[cmd(transparent)]
+///     Subcommand(Subcommand),
+///     Third,
+/// }
+///
+/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// assert_eq!(parse::<_, Command>("first", ())?, Command::Subcommand(Subcommand::First));
+/// assert_eq!(parse::<_, Command>("third", ())?, Command::Third);
+/// # Ok(())
+/// # }
+/// ```
 pub trait Parsable<Ctx> {
     /// The parser type for this type
     type Parser: Parser<Ctx, Value = Self>;
