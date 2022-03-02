@@ -135,6 +135,7 @@ pub(crate) struct FieldAttributes {
     pub(crate) parser: Option<syn::Type>,
     pub(crate) default: Option<Option<syn::Expr>>,
     pub(crate) names: HashMap<String, Option<syn::Expr>>,
+    pub(crate) alias_values: HashMap<String, syn::Expr>,
 }
 
 impl BuildableAttributes for FieldAttributes {
@@ -168,18 +169,6 @@ impl BuildableAttributes for FieldAttributes {
         }
     }
 
-    fn visit_list(&mut self, list: &syn::MetaList) -> Result<(), Error> {
-        if compare_path(&list.path, "attr") {
-            let mut names_attributes = FieldNamesAttributes(&mut self.names);
-            for nested in list.nested.iter() {
-                names_attributes.visit_nested_meta(nested)?;
-            }
-            Ok(())
-        } else {
-            Err(unknown_attr_error(&list.path))
-        }
-    }
-
     fn visit_path(&mut self, path: &syn::Path) -> Result<(), Error> {
         if compare_path(path, "default") {
             if self.default.is_some() {
@@ -192,6 +181,80 @@ impl BuildableAttributes for FieldAttributes {
             Ok(())
         } else {
             Err(unknown_attr_error(path))
+        }
+    }
+
+    fn visit_list(&mut self, list: &syn::MetaList) -> Result<(), Error> {
+        if compare_path(&list.path, "attr") {
+            let mut names_attributes = FieldNamesAttributes(&mut self.names);
+            for nested in list.nested.iter() {
+                names_attributes.visit_nested_meta(nested)?;
+            }
+            Ok(())
+        } else if compare_path(&list.path, "alias_value") {
+            let mut inner_attributes = AliasValueOverrideAttributes::default();
+            for nested in list.nested.iter() {
+                inner_attributes.visit_nested_meta(nested)?;
+            }
+
+            match (inner_attributes.alias, inner_attributes.value) {
+                (None, _) => Err(Error::new(list.span(), "alias attribute is required")),
+                (_, None) => Err(Error::new(list.span(), "value attribute is required")),
+                (Some(alias), Some(value)) => {
+                    if self.alias_values.contains_key(&alias) {
+                        return Err(Error::new(
+                            list.span(),
+                            "multiple values for the same attribute",
+                        ));
+                    }
+                    self.alias_values.insert(alias, value);
+                    Ok(())
+                }
+            }
+        } else {
+            Err(unknown_attr_error(&list.path))
+        }
+    }
+
+    fn from_attributes<'a>(attrs: impl Iterator<Item = &'a syn::Attribute>) -> Result<Self, Error>
+    where
+        Self: Default,
+    {
+        let mut attributes = Self::default();
+
+        for attr in attrs {
+            let meta = attr.parse_meta()?;
+            let inner = match meta {
+                syn::Meta::Path(path) if compare_path(&path, "cmd") => {
+                    return Err(Error::new(path.span(), "Missing argument parameters"));
+                }
+                syn::Meta::NameValue(name_value) if compare_path(&name_value.path, "cmd") => {
+                    return Err(Error::new(
+                        name_value.span(),
+                        "Key-value argument style is not allowed",
+                    ));
+                }
+                syn::Meta::List(list) if compare_path(&list.path, "cmd") => list,
+                _ => continue,
+            };
+
+            for nested in inner.nested.iter() {
+                attributes.visit_nested_meta(nested)?;
+            }
+        }
+
+        Ok(attributes)
+    }
+
+    fn visit_nested_meta(&mut self, nested: &syn::NestedMeta) -> Result<(), Error> {
+        let meta = match nested {
+            syn::NestedMeta::Meta(meta) => meta,
+            syn::NestedMeta::Lit(lit) => return Err(Error::new(lit.span(), "Unexpected literal")),
+        };
+        match meta {
+            syn::Meta::Path(path) => self.visit_path(path),
+            syn::Meta::NameValue(name_value) => self.visit_name_value(name_value),
+            syn::Meta::List(list) => self.visit_list(list),
         }
     }
 }
@@ -230,6 +293,42 @@ impl<'a> BuildableAttributes for FieldNamesAttributes<'a> {
     fn visit_path(&mut self, path: &syn::Path) -> Result<(), Error> {
         let name = name_to_kebab_case(&get_path_string(path)?);
         self.push(path.span(), name, None)
+    }
+}
+
+#[derive(Default)]
+struct AliasValueOverrideAttributes {
+    alias: Option<String>,
+    value: Option<syn::Expr>,
+}
+
+impl BuildableAttributes for AliasValueOverrideAttributes {
+    fn visit_name_value(&mut self, name_value: &syn::MetaNameValue) -> Result<(), Error> {
+        if compare_path(&name_value.path, "alias") {
+            if self.alias.is_some() {
+                return Err(Error::new(
+                    name_value.span(),
+                    "multiple aliases are not allowed",
+                ));
+            }
+            let alias = get_name_value_string(name_value)?;
+            self.alias = Some(alias);
+            Ok(())
+        } else if compare_path(&name_value.path, "value") {
+            if self.value.is_some() {
+                return Err(Error::new(
+                    name_value.span(),
+                    "multiple values are not allowed",
+                ));
+            }
+            let value_str = get_name_value_string(name_value)?;
+            let value = syn::parse_str::<syn::Expr>(&value_str)
+                .map_err(|error| Error::new(name_value.lit.span(), error))?;
+            self.value = Some(value);
+            Ok(())
+        } else {
+            Err(unknown_attr_error(&name_value.path))
+        }
     }
 }
 
@@ -475,6 +574,71 @@ mod tests {
                 &error.to_string(),
                 "attribute \"one\" declared more than once"
             );
+        }
+
+        mod alias_value_override {
+            use super::*;
+
+            #[test]
+            fn parsing() {
+                let attrs = [make_attribute(
+                    "cmd",
+                    quote!((
+                        alias_value(alias = "al1", value = "5"),
+                        alias_value(alias = "al2", value = "10")
+                    )),
+                )];
+                let attributes = FieldAttributes::from_attributes(attrs.iter()).unwrap();
+                assert_eq!(attributes.alias_values.len(), 2);
+                let al1 = attributes.alias_values.get("al1").unwrap();
+                assert_eq!(quote!(#al1).to_string(), "5");
+                let al2 = attributes.alias_values.get("al2").unwrap();
+                assert_eq!(quote!(#al2).to_string(), "10");
+            }
+
+            #[test]
+            fn missing_alias() {
+                let attrs = [make_attribute("cmd", quote! {(alias_value(value = "1"))})];
+                let error = FieldAttributes::from_attributes(attrs.iter()).unwrap_err();
+                assert_eq!(&error.to_string(), "alias attribute is required");
+            }
+
+            #[test]
+            fn duplicate_alias() {
+                let attrs = [make_attribute(
+                    "cmd",
+                    quote! {(alias_value(alias = "a", alias = "b", value = "1"))},
+                )];
+                let error = FieldAttributes::from_attributes(attrs.iter()).unwrap_err();
+                assert_eq!(&error.to_string(), "multiple aliases are not allowed");
+            }
+
+            #[test]
+            fn missing_value() {
+                let attrs = [make_attribute("cmd", quote! {(alias_value(alias = "al"))})];
+                let error = FieldAttributes::from_attributes(attrs.iter()).unwrap_err();
+                assert_eq!(&error.to_string(), "value attribute is required");
+            }
+
+            #[test]
+            fn duplicate_values() {
+                let attrs = [make_attribute(
+                    "cmd",
+                    quote! {(alias_value(alias = "a", value = "1", value = "2"))},
+                )];
+                let error = FieldAttributes::from_attributes(attrs.iter()).unwrap_err();
+                assert_eq!(&error.to_string(), "multiple values are not allowed");
+            }
+
+            #[test]
+            fn conflicting_value() {
+                let attrs = [make_attribute(
+                    "cmd",
+                    quote! {(alias_value(alias = "a", value = "1"), alias_value(alias = "a", value = "2"))},
+                )];
+                let error = FieldAttributes::from_attributes(attrs.iter()).unwrap_err();
+                assert_eq!(&error.to_string(), "multiple values for the same attribute");
+            }
         }
     }
 
