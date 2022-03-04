@@ -551,3 +551,49 @@ mod enum_transparent {
         suggestions: []
     });
 }
+
+mod enum_alias_values {
+    use super::*;
+
+    #[derive(Debug, PartialEq, Eq, Parsable)]
+    enum WithAliases {
+        #[cmd(alias = "first", alias = "second")]
+        Variant(
+            #[cmd(
+                alias_value(alias = "first", value = "10"),
+                alias_value(alias = "second", value = "20")
+            )]
+            u8,
+            bool,
+        ),
+    }
+
+    test_parse!(
+        parse_first, WithAliases,
+        "first false abc" => Ok(WithAliases::Variant(10, false), Some(token!("abc")))
+    );
+    test_parse!(
+        parse_second, WithAliases,
+        "second true abc" => Ok(WithAliases::Variant(20, true), Some(token!("abc")))
+    );
+    test_parse!(
+        parse_original_variant, WithAliases,
+        "variant 15 true abc" => Ok(WithAliases::Variant(15, true), Some(token!("abc")))
+    );
+
+    test_complete!(complete_first, WithAliases, "first t" => {
+        consumed: true,
+        remaining: None,
+        suggestions: ["rue"]
+    });
+    test_complete!(complete_original, WithAliases, "variant 20" => {
+        consumed: true,
+        remaining: None,
+        suggestions: []
+    });
+    test_complete!(complete_original_non_optionall, WithAliases, "variant 20 t" => {
+        consumed: true,
+        remaining: None,
+        suggestions: ["rue"]
+    });
+}

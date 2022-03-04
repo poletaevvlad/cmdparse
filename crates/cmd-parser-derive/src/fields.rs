@@ -1,5 +1,6 @@
 use crate::attributes::{BuildableAttributes, FieldAttributes};
 use crate::context::{CodegenContext, Parser, ParserIndex};
+use std::collections::HashMap;
 
 pub(crate) enum FieldView<'a> {
     Required {
@@ -57,6 +58,7 @@ pub(crate) enum FieldValue {
 pub(crate) struct Field {
     value: FieldValue,
     field_index: usize,
+    alias_values: HashMap<String, syn::Expr>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -111,7 +113,11 @@ impl<'a> FieldsSet<'a> {
                         parser: context.push_parser(parser),
                     },
                 };
-                result.fields.push(Field { value, field_index });
+                result.fields.push(Field {
+                    value,
+                    field_index,
+                    alias_values: attributes.alias_values,
+                });
             } else {
                 let has_parser = attributes.names.values().any(Option::is_none);
                 let parser_id = if has_parser {
@@ -132,7 +138,11 @@ impl<'a> FieldsSet<'a> {
                             default: default.flatten(),
                         },
                     };
-                    result.fields.push(Field { value, field_index });
+                    result.fields.push(Field {
+                        value,
+                        field_index,
+                        alias_values: attributes.alias_values.clone(),
+                    });
                 }
             }
         }
@@ -154,10 +164,21 @@ impl<'a> FieldsSet<'a> {
         self.idents.get(index).copied()
     }
 
-    pub(crate) fn fields_views(&self) -> impl Iterator<Item = FieldView<'_>> {
+    pub(crate) fn fields_views<'b: 'a>(
+        &'b self,
+        variant: Option<&'b str>,
+    ) -> impl Iterator<Item = FieldView<'b>> + 'b {
         let mut required_position = 0;
         self.fields.iter().map(move |field| {
             let field_index = field.field_index;
+            if let Some(variant) = variant {
+                if let Some(value) = field.alias_values.get(variant) {
+                    return FieldView::Default {
+                        field_index,
+                        default: Some(value),
+                    };
+                }
+            }
             match &field.value {
                 FieldValue::Required { parser } => {
                     required_position += 1;

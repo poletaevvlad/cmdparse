@@ -22,8 +22,8 @@ type DeriveResult = Result<(TokenStream2, TokenStream2), syn::Error>;
 fn derive_struct<'a>(ctx: &mut CodegenContext<'a>, data: &'a syn::DataStruct) -> DeriveResult {
     let fieldset = FieldsSet::from_fields(ctx, &data.fields)?;
     let name = ctx.type_name;
-    let parse_tokens = gen_parse_struct(quote! { #name }, ctx, &fieldset);
-    let complete_tokens = gen_complete_struct(ctx, &fieldset);
+    let parse_tokens = gen_parse_struct(quote! { #name }, ctx, &fieldset, None);
+    let complete_tokens = gen_complete_struct(ctx, &fieldset, None);
     Ok((parse_tokens, complete_tokens))
 }
 

@@ -178,6 +178,7 @@ pub(crate) fn gen_parse_struct(
     constructor: TokenStream,
     ctx: &CodegenContext,
     fields: &FieldsSet<'_>,
+    variant: Option<&str>,
 ) -> TokenStream {
     let mut initialization = TokenStream::new();
     let mut required_parsing = TokenStream::new();
@@ -187,7 +188,7 @@ pub(crate) fn gen_parse_struct(
     let mut required_count: usize = 0;
     let mut initialized_field_indices = HashSet::new();
 
-    for field in fields.fields_views() {
+    for field in fields.fields_views(variant) {
         required_parsing.extend(field.gen_parse_required(ctx));
         optional_parsing.extend(field.gen_parse_optional(ctx));
 
@@ -246,13 +247,17 @@ pub(crate) fn gen_parse_struct(
     }
 }
 
-pub(crate) fn gen_complete_struct(ctx: &CodegenContext, fields: &FieldsSet<'_>) -> TokenStream {
+pub(crate) fn gen_complete_struct(
+    ctx: &CodegenContext,
+    fields: &FieldsSet<'_>,
+    variant: Option<&str>,
+) -> TokenStream {
     let mut required_complete = TokenStream::new();
     let mut optional_complete = TokenStream::new();
     let mut required_count: usize = 0;
     let mut attribute_names = Vec::new();
 
-    for field in fields.fields_views() {
+    for field in fields.fields_views(variant) {
         required_complete.extend(field.gen_complete_required(ctx));
         optional_complete.extend(field.gen_complete_optional(ctx));
         if matches!(field, FieldView::Required { .. }) {

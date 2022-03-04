@@ -9,7 +9,12 @@ impl<'a> VariantView<'a> {
         let label = self.label;
         let variant_ident = self.ident;
         let ident = ctx.type_name;
-        let parse_variant = gen_parse_struct(quote! { #ident::#variant_ident }, ctx, self.fields);
+        let parse_variant = gen_parse_struct(
+            quote! { #ident::#variant_ident },
+            ctx,
+            self.fields,
+            Some(label),
+        );
         quote! {
             #label => {
                 input = remaining;
@@ -20,7 +25,7 @@ impl<'a> VariantView<'a> {
 
     fn gen_complete(&self, ctx: &CodegenContext) -> TokenStream {
         let label = self.label;
-        let complete_variant = gen_complete_struct(ctx, self.fields);
+        let complete_variant = gen_complete_struct(ctx, self.fields, Some(label));
         quote! {
             #label => {
                 input = remaining;
@@ -34,7 +39,8 @@ impl<'a> TransparentVariantView<'a> {
     fn gen_parse(&self, ctx: &CodegenContext) -> TokenStream {
         let variant_ident = self.ident;
         let ident = ctx.type_name;
-        let parse_variant = gen_parse_struct(quote! { #ident::#variant_ident }, ctx, self.fields);
+        let parse_variant =
+            gen_parse_struct(quote! { #ident::#variant_ident }, ctx, self.fields, None);
         quote! {
             match (||{ #parse_variant })() {
                 Ok(result) => return Ok(result),
@@ -45,7 +51,7 @@ impl<'a> TransparentVariantView<'a> {
     }
 
     fn gen_complete(&self, ctx: &CodegenContext) -> TokenStream {
-        let complete_variant = gen_complete_struct(ctx, self.fields);
+        let complete_variant = gen_complete_struct(ctx, self.fields, None);
         quote! {
             let result = (||{ #complete_variant })();
             if result.value_consumed {
