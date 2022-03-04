@@ -343,7 +343,7 @@ pub(crate) struct VariantAttributes {
     pub(crate) aliases: Vec<String>,
     pub(crate) renamed: Option<String>,
     pub(crate) ignored: bool,
-    pub(crate) transparent: bool,
+    pub(crate) transparent_no_error: Option<bool>,
 }
 
 impl BuildableAttributes for VariantAttributes {
@@ -358,7 +358,10 @@ impl BuildableAttributes for VariantAttributes {
             self.ignored = true;
             Ok(())
         } else if compare_path(path, "transparent") {
-            self.transparent = true;
+            self.transparent_no_error = Some(false);
+            Ok(())
+        } else if compare_path(path, "transparent_no_error") {
+            self.transparent_no_error = Some(true);
             Ok(())
         } else {
             Err(unknown_attr_error(path))

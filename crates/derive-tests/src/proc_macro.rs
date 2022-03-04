@@ -552,6 +552,33 @@ mod enum_transparent {
     });
 }
 
+mod enum_transparent_no_error {
+    use super::*;
+
+    #[derive(Debug, PartialEq, Parsable)]
+    enum WithTransparent {
+        #[cmd(transparent_no_error)]
+        Boolean(bool),
+        #[cmd(transparent_no_error)]
+        Integer(i32),
+        #[cmd(transparent_no_error)]
+        Float(f32),
+    }
+
+    test_parse!(
+        parse_bool, WithTransparent,
+        "true abc" => Ok(WithTransparent::Boolean(true), Some(token!("abc")))
+    );
+    test_parse!(
+        parse_float, WithTransparent,
+        "4.0 abc" => Ok(WithTransparent::Float(4.0), Some(token!("abc")))
+    );
+    test_parse!(
+        parse_integer, WithTransparent,
+        "4 abc" => Ok(WithTransparent::Integer(4), Some(token!("abc")))
+    );
+}
+
 mod enum_alias_values {
     use super::*;
 

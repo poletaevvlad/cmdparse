@@ -16,7 +16,7 @@ struct VariantFieldsSet<'a> {
 pub(crate) struct VariantsSet<'a> {
     variants: Vec<Variant>,
     fieldsets: Vec<VariantFieldsSet<'a>>,
-    transparent: Vec<usize>,
+    transparent: Vec<(usize, bool)>,
 }
 
 pub(crate) struct VariantView<'a> {
@@ -28,6 +28,7 @@ pub(crate) struct VariantView<'a> {
 pub(crate) struct TransparentVariantView<'a> {
     pub(crate) ident: &'a syn::Ident,
     pub(crate) fields: &'a FieldsSet<'a>,
+    pub(crate) ignore_error: bool,
 }
 
 impl<'a> VariantsSet<'a> {
@@ -54,8 +55,8 @@ impl<'a> VariantsSet<'a> {
                 fieldset,
             });
 
-            if attributes.transparent {
-                result.transparent.push(fieldset_index);
+            if let Some(no_error) = attributes.transparent_no_error {
+                result.transparent.push((fieldset_index, no_error));
             } else {
                 if !attributes.ignored {
                     let label = attributes
@@ -90,11 +91,12 @@ impl<'a> VariantsSet<'a> {
     }
 
     pub(crate) fn transparent_variants(&self) -> impl Iterator<Item = TransparentVariantView> {
-        self.transparent.iter().map(|index| {
+        self.transparent.iter().map(|(index, no_error)| {
             let fields = &self.fieldsets[*index];
             TransparentVariantView {
                 ident: fields.ident,
                 fields: &fields.fieldset,
+                ignore_error: *no_error,
             }
         })
     }

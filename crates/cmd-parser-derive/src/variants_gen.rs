@@ -41,11 +41,15 @@ impl<'a> TransparentVariantView<'a> {
         let ident = ctx.type_name;
         let parse_variant =
             gen_parse_struct(quote! { #ident::#variant_ident }, ctx, self.fields, None);
+        let error_handle = match self.ignore_error {
+            true => quote!(Err(_) => {}),
+            false => quote!(Err(error) => return Err(error)),
+        };
         quote! {
             match (||{ #parse_variant })() {
                 Ok(result) => return Ok(result),
                 Err(::cmd_parser::error::ParseFailure::Unrecognized(_)) => {},
-                Err(error) => return Err(error),
+                #error_handle
             }
         }
     }

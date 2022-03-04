@@ -749,6 +749,33 @@ pub trait Parser<Ctx> {
 /// # Ok(())
 /// # }
 /// ```
+///
+/// ### `transparent_no_error`
+///
+/// Functions similarly to `transparent` but does not terminate parsing on failure. It is useful
+/// when the first field of this variant is not an enum.
+///
+/// ```
+/// use cmd_parser::{Parsable, parse};
+///
+/// #[derive(Debug, PartialEq, Parsable)]
+/// enum Value {
+///     #[cfg(transparent_no_error)] Real(f64),
+///     #[cfg(transparent_no_error)] Integer(i64),
+///     #[cfg(transparent_no_error)] Boolean(bool),
+/// }
+///
+/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// assert_eq!(parse::<_, Value>("0.4", ())?, Value::Real(0.4));
+/// assert_eq!(parse::<_, Value>("12", ())?, Value::Integer(12));
+/// assert_eq!(parse::<_, Value>("true", ())?, Value::Boolean(true));
+/// # Ok(())
+/// # }
+/// ```
+///
+/// Note that in the example above, the orders in which the enum variants are declared matters:
+/// `cmd_parser` tries to parse transparent variants in order in which they are declared and
+/// returns the first successfuly parsed result.
 pub trait Parsable<Ctx> {
     /// The parser type for this type
     type Parser: Parser<Ctx, Value = Self>;
