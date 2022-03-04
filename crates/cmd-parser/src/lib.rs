@@ -627,6 +627,34 @@ pub trait Parser<Ctx> {
 /// # }
 /// ```
 ///
+/// ### `alias_value(alias = "alias", value="value")`
+///
+/// Used for enum variant's fields. Specifies the value for a field if the specific alias is used
+/// as enum's discriminator. An `alias` can be either a name of a vairant (converted into
+/// kebab-case), a renamed variant name (via `rename` attribute), or an alias defined using `alias`
+/// attribute.
+///
+/// ```
+/// use cmd_parser::{Parsable, parse};
+///
+/// #[derive(Debug, PartialEq, Eq, Parsable)]
+/// enum MyEnum {
+///     #[cmd(alias = "enable", alias = "disable")]
+///     SetEnabled(
+///         #[cmd(
+///             alias_value(alias = "enable", value = "true"),
+///             alias_value(alias = "disable", value = "false")
+///         )] bool
+///     )
+/// }
+///
+/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// assert_eq!(parse::<_, MyEnum>("enable", ())?, MyEnum::SetEnabled(true));
+/// assert_eq!(parse::<_, MyEnum>("disable", ())?, MyEnum::SetEnabled(false));
+/// # Ok(())
+/// # }
+/// ```
+///
 /// ## Enum variant attributes
 ///
 /// These attributes are applicable to enum varaints. Generally, `cmd_parser` expects a
