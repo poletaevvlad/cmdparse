@@ -9,7 +9,7 @@ use std::marker::PhantomData;
 /// Parse any one-dimensional collection of items
 ///
 /// See [`CollectionParser`] documentation for details.
-pub trait ParsableCollection<Ctx> {
+pub trait ParsableCollection {
     /// The type of a collection member.
     type Item;
 
@@ -19,7 +19,7 @@ pub trait ParsableCollection<Ctx> {
 
 macro_rules! impl_parsable_collection {
     ($ty:ty $(where T: $bound_1:ident $(+ $bound:ident)*)? { $append:item }) => {
-        impl<Ctx, T: Parsable<Ctx> $(+ $bound_1 $(+ $bound)*)?> ParsableCollection<Ctx> for $ty {
+        impl<T $(: $bound_1 $(+ $bound)*)?> ParsableCollection for $ty {
             type Item = T;
             $append
         }
@@ -110,7 +110,7 @@ impl_parsable_collection! {BTreeSet<T> where T: Eq + Hash + Ord {
 /// #[derive(Default, Debug, PartialEq, Eq)]
 /// struct MyBitArray(u128);
 ///
-/// impl<Ctx> ParsableCollection<Ctx> for MyBitArray {
+/// impl ParsableCollection for MyBitArray {
 ///     type Item = bool;
 ///
 ///     fn append(&mut self, item: Self::Item) {
@@ -118,8 +118,8 @@ impl_parsable_collection! {BTreeSet<T> where T: Eq + Hash + Ord {
 ///     }
 /// }
 ///
-/// impl<Ctx> Parsable<Ctx> for MyBitArray {
-///     type Parser = CollectionParser<Ctx, Self, <bool as Parsable<Ctx>>::Parser>;
+/// impl<Ctx: Clone> Parsable<Ctx> for MyBitArray {
+///     type Parser = CollectionParser<Self, <bool as Parsable<Ctx>>::Parser>;
 /// }
 ///
 /// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
@@ -142,7 +142,7 @@ impl<C, P> Default for CollectionParser<C, P> {
     }
 }
 
-impl<Ctx: Clone, C: ParsableCollection<Ctx> + Default, P: Parser<Ctx, Value = C::Item>> Parser<Ctx>
+impl<Ctx: Clone, C: ParsableCollection + Default, P: Parser<Ctx, Value = C::Item>> Parser<Ctx>
     for CollectionParser<C, P>
 {
     type Value = C;
@@ -450,7 +450,7 @@ pub trait ParsableTransformation<O> {
 /// }
 ///
 /// impl<Ctx> Parsable<Ctx> for PostId {
-///     type Parser = TransformParser<Ctx, <usize as Parsable<Ctx>>::Parser, PostId, PostId>;
+///     type Parser = TransformParser<<usize as Parsable<Ctx>>::Parser, PostId, PostId>;
 /// }
 ///
 /// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
@@ -502,7 +502,7 @@ pub trait ParsableTransformation<O> {
 /// }
 ///
 /// type PowerOfTwoParser<Ctx> =
-///     TransformParser<Ctx, <u64 as Parsable<Ctx>>::Parser, IsPowerOfTwo, u64>;
+///     TransformParser<<u64 as Parsable<Ctx>>::Parser, IsPowerOfTwo, u64>;
 ///
 /// # fn main() {
 /// assert!(parse_parser::<_, PowerOfTwoParser<()>>("16", ()).is_ok());

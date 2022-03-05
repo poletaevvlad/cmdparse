@@ -270,16 +270,13 @@ impl<'a> CompletionResult<'a> {
 ///
 /// struct RuntimeContext { variables: HashMap<String, u32> }
 ///
-/// struct VariableParser<'c> { ctx: &'c RuntimeContext, }
+/// #[derive(Default)]
+/// struct VariableParser;
 ///
-/// impl<'c> Parser<&'c RuntimeContext> for VariableParser<'c> {
+/// impl<'c> Parser<&'c RuntimeContext> for VariableParser {
 ///     type Value = u32;
-///     
-///     fn create(ctx: &'c RuntimeContext) -> Self {
-///         VariableParser{ ctx }
-///     }
 ///
-///     fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
+///     fn parse<'a>(&self, input: TokenStream<'a>, ctx: &'c RuntimeContext) -> ParseResult<'a, Self::Value> {
 ///         match input.take().transpose()? {
 ///             None => Err(ParseError::token_required().expected("variable").into()),
 ///             Some((attr @ Token::Attribute(_), remaining)) => {
@@ -287,7 +284,7 @@ impl<'a> CompletionResult<'a> {
 ///             }
 ///             Some((token @ Token::Text(text), remaining)) => {
 ///                 let text = text.parse_string();
-///                 match self.ctx.variables.get(&text as &str) {
+///                 match ctx.variables.get(&text as &str) {
 ///                     Some(value) => Ok((*value, remaining)),
 ///                     None => Err(UnrecognizedToken::new(token, remaining).into()),
 ///                 }
@@ -295,14 +292,14 @@ impl<'a> CompletionResult<'a> {
 ///         }
 ///     }
 ///
-///     fn complete<'a>(&self, input: TokenStream<'a>) -> CompletionResult<'a> {
+///     fn complete<'a>(&self, input: TokenStream<'a>, ctx: &'c RuntimeContext) -> CompletionResult<'a> {
 ///         match input.take() {
 ///             Some(Err(_)) | None => CompletionResult::new_final(false),
 ///             Some(Ok((Token::Attribute(_), _))) => CompletionResult::new(input, false),
 ///             Some(Ok((Token::Text(text), remaining))) if remaining.is_all_consumed() => {
 ///                 let text = text.parse_string();
 ///                 CompletionResult::new_final(true).add_suggestions(
-///                     self.ctx.variables.keys()
+///                     ctx.variables.keys()
 ///                         .filter_map(|key| key.strip_prefix(&text as &str))
 ///                         .map(|suggestion| Cow::Owned(suggestion.to_string()))
 ///                 )
@@ -427,28 +424,22 @@ pub trait Parser<Ctx>: Default {
 /// #[derive(Debug, PartialEq)]
 /// struct Length(f64, LengthUnit);
 ///
-/// struct LengthParser {
-///     unit: LengthUnit,
-///     float_parser: <f64 as Parsable<ParsingContext>>::Parser,
-/// }
+/// #[derive(Default)]
+/// struct LengthParser;
 ///
 /// impl Parser<ParsingContext> for LengthParser {
 ///     type Value = Length;
 ///
-///     fn create(ctx: ParsingContext) -> Self {
-///         LengthParser {
-///             unit: ctx.unit,
-///             float_parser: <f64 as Parsable<_>>::new_parser(ctx),
-///         }
+///     fn parse<'a>(&self, input: TokenStream<'a>, ctx: ParsingContext) -> ParseResult<'a, Self::Value> {
+///         let unit = ctx.unit;
+///         let parser = <f64 as Parsable<ParsingContext>>::Parser::default();
+///         let (value, remaining) = parser.parse(input, ctx)?;
+///         Ok((Length(value, unit), remaining))
 ///     }
 ///
-///     fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
-///         let (value, remaining) = Parser::<ParsingContext>::parse(&self.float_parser, input)?;
-///         Ok((Length(value, self.unit), remaining))
-///     }
-///
-///     fn complete<'a>(&self, input: TokenStream<'a>) -> CompletionResult<'a> {
-///         Parser::<ParsingContext>::complete(&self.float_parser, input)
+///     fn complete<'a>(&self, input: TokenStream<'a>, ctx: ParsingContext) -> CompletionResult<'a> {
+///         let parser = <f64 as Parsable<ParsingContext>>::Parser::default();
+///         parser.complete(input, ctx)
 ///     }
 /// }
 ///
@@ -512,8 +503,8 @@ pub trait Parser<Ctx>: Default {
 ///
 /// #[derive(Debug, Parsable)]
 /// struct Point(
-///     #[cmd(parser = "TransformParser<CmdParserCtx, <f64 as Parsable<CmdParserCtx>>::Parser, Number01RangeValidator, f64>")] f64,
-///     #[cmd(parser = "TransformParser<CmdParserCtx, <f64 as Parsable<CmdParserCtx>>::Parser, Number01RangeValidator, f64>")] f64,
+///     #[cmd(parser = "TransformParser<<f64 as Parsable<CmdParserCtx>>::Parser, Number01RangeValidator, f64>")] f64,
+///     #[cmd(parser = "TransformParser<<f64 as Parsable<CmdParserCtx>>::Parser, Number01RangeValidator, f64>")] f64,
 /// );
 /// ```
 ///
@@ -723,11 +714,11 @@ pub trait Parser<Ctx>: Default {
 /// ```
 /// use cmd_parser::{Parsable, parse};
 ///
-/// #[derive(Debug, PartialEq, Parsable)]
+/// #[derive(Debug, PartialEq,Parsable)]
 /// enum Value {
-///     #[cfg(transparent_no_error)] Real(f64),
-///     #[cfg(transparent_no_error)] Integer(i64),
-///     #[cfg(transparent_no_error)] Boolean(bool),
+///     #[cmd(transparent_no_error)] Integer(i64),
+///     #[cmd(transparent_no_error)] Real(f64),
+///     #[cmd(transparent_no_error)] Boolean(bool),
 /// }
 ///
 /// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
