@@ -329,44 +329,9 @@ impl<'a> CompletionResult<'a> {
 ///
 /// Parser implementation should be as generic as possible to avolid type errors when integrating
 /// with other parsers.
-pub trait Parser<Ctx> {
+pub trait Parser<Ctx>: Default {
     /// The type that this parser will parse the input stream into.
     type Value;
-
-    /// Creates a new parser with a given context.
-    ///
-    /// If the parser with call other parsers, their instances should be created inside the
-    /// `create` method. This constructor should pass the context down the tree of parsers.
-    ///
-    /// ```
-    /// # use cmd_parser::{Parser, CompletionResult, ParseResult};
-    /// # use cmd_parser::tokens::TokenStream;
-    /// struct TupleParser<P> {
-    ///     inner_parser: P
-    /// }
-    ///
-    /// impl<Ctx, P: Parser<Ctx>> Parser<Ctx> for TupleParser<P> {
-    ///     type Value = (P::Value, P::Value);
-    ///     
-    ///     fn create(ctx: Ctx) -> Self {
-    ///         TupleParser {
-    ///             inner_parser: P::create(ctx),
-    ///         }
-    ///     }
-    ///     // ...
-    ///     # fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
-    ///     #     todo!()
-    ///     # }
-    ///     #
-    ///     # fn complete<'a>(&self, input: TokenStream<'a>) -> CompletionResult<'a> {
-    ///     #     todo!()
-    ///     # }
-    /// }
-    /// ```
-    ///
-    /// If the parser need to pass context to multiple parsers it should constrain the context to
-    /// implement [`Clone`].
-    fn create(ctx: Ctx) -> Self;
 
     /// Parsers the begining of the token stream into a `Value`
     ///
@@ -396,7 +361,7 @@ pub trait Parser<Ctx> {
     ///    convert it into the equivalent error if the parser was not called on the original input.
     ///  * when all required tokens has been successfully consumed parser should continue to take
     ///    tokens until a text token or an attribute that is not recognized is encountered
-    fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value>;
+    fn parse<'a>(&self, input: TokenStream<'a>, ctx: Ctx) -> ParseResult<'a, Self::Value>;
 
     /// Constructs the completion suggestions for the last token of the input stream
     ///
@@ -416,7 +381,7 @@ pub trait Parser<Ctx> {
     /// | `CompletionResult::new_final(true)`      | The last token is reached and intirety of the input string is consumed. Parser should include completions for this token if possible                                                                                    |
     /// | `CompletionResult::new(input, false)`    | The token is the fist in the token stream and parser does not recognize it (following the same protocol described for `parse` method). Parser should include completion suggestions that would make token recognizable  |
     /// | `CompletionReuslt::new(remaining, true)` | The parser successfully consumed all tokens that are required for parsing the value. `remaining` must start with the first non-consumed token if any. The parser should include suggestions for that non-consumed token |
-    fn complete<'a>(&self, input: TokenStream<'a>) -> CompletionResult<'a>;
+    fn complete<'a>(&self, input: TokenStream<'a>, ctx: Ctx) -> CompletionResult<'a>;
 }
 
 /// Sets the default parser for a given type
@@ -779,28 +744,6 @@ pub trait Parser<Ctx> {
 pub trait Parsable<Ctx> {
     /// The parser type for this type
     type Parser: Parser<Ctx, Value = Self>;
-
-    /// Creates a new parser of the type `Self::Parser`
-    ///
-    /// This is equivalent to calling the parser's [`create`](Parser::create) method. This method
-    /// is privided for convenience and the implementers should not have a need to override its
-    /// behavior.
-    fn new_parser(ctx: Ctx) -> Self::Parser {
-        Self::Parser::create(ctx)
-    }
-}
-
-fn parse_with_parser<Ctx, P: Parser<Ctx>>(input: &str, parser: P) -> Result<P::Value, ParseError> {
-    let tokens = TokenStream::new(input);
-    match parser.parse(tokens) {
-        Ok((result, remaining)) => match remaining.peek() {
-            Some(Ok(token)) => Err(ParseError::unknown(token)),
-            Some(Err(err)) => Err(err.into()),
-            None => Ok(result),
-        },
-        Err(ParseFailure::Error(err)) => Err(err),
-        Err(ParseFailure::Unrecognized(unrecognized)) => Err(unrecognized.into_error()),
-    }
 }
 
 /// Parsers a value from an input string using an explicitly specified parser
@@ -827,7 +770,16 @@ fn parse_with_parser<Ctx, P: Parser<Ctx>>(input: &str, parser: P) -> Result<P::V
 /// # }
 /// ```
 pub fn parse_parser<Ctx, P: Parser<Ctx>>(input: &str, ctx: Ctx) -> Result<P::Value, ParseError> {
-    parse_with_parser(input, P::create(ctx))
+    let tokens = TokenStream::new(input);
+    match P::default().parse(tokens, ctx) {
+        Ok((result, remaining)) => match remaining.peek() {
+            Some(Ok(token)) => Err(ParseError::unknown(token)),
+            Some(Err(err)) => Err(err.into()),
+            None => Ok(result),
+        },
+        Err(ParseFailure::Error(err)) => Err(err),
+        Err(ParseFailure::Unrecognized(unrecognized)) => Err(unrecognized.into_error()),
+    }
 }
 
 /// Parsers a [`Parsable`] value from an input string
@@ -848,7 +800,7 @@ pub fn parse_parser<Ctx, P: Parser<Ctx>>(input: &str, ctx: Ctx) -> Result<P::Val
 /// # }
 /// ```
 pub fn parse<Ctx, T: Parsable<Ctx>>(input: &str, ctx: Ctx) -> Result<T, ParseError> {
-    parse_with_parser(input, T::new_parser(ctx))
+    parse_parser::<_, T::Parser>(input, ctx)
 }
 
 /// Computes the completion suggestiosns for a value using an explicit parser
@@ -871,7 +823,7 @@ pub fn parse<Ctx, T: Parsable<Ctx>>(input: &str, ctx: Ctx) -> Result<T, ParseErr
 /// ```
 pub fn complete_parser<Ctx, P: Parser<Ctx>>(input: &str, ctx: Ctx) -> BTreeSet<Cow<'static, str>> {
     let tokens = TokenStream::new(input);
-    P::create(ctx).complete(tokens).suggestions
+    P::default().complete(tokens, ctx).suggestions
 }
 
 /// Computes the completion suggestiosns for a [`Parsable`] value
@@ -890,5 +842,5 @@ pub fn complete_parser<Ctx, P: Parser<Ctx>>(input: &str, ctx: Ctx) -> BTreeSet<C
 /// ```
 pub fn complete<Ctx, T: Parsable<Ctx>>(input: &str, ctx: Ctx) -> BTreeSet<Cow<'static, str>> {
     let tokens = TokenStream::new(input);
-    T::new_parser(ctx).complete(tokens).suggestions
+    T::Parser::default().complete(tokens, ctx).suggestions
 }

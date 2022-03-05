@@ -33,7 +33,7 @@ impl<'a> FieldView<'a> {
                 let parse_ctx = ctx.parse_context_ident();
 
                 quote! {
-                    #position => match input.with_nested(|input| ::cmd_parser::Parser::<#parse_ctx>::parse(&self.#parser_ident, input)) {
+                    #position => match input.with_nested(|input| ::cmd_parser::Parser::<#parse_ctx>::parse(&#parser_ident, input, ctx.clone())) {
                         Ok((result, remaining)) => {
                             input = remaining;
                             #var_ident = Some(result);
@@ -61,7 +61,7 @@ impl<'a> FieldView<'a> {
                 quote! {
                     #position => {
                         let result = input.complete_nested(|input| {
-                            ::cmd_parser::Parser::<#parse_ctx>::complete(&self.#parser_ident, input)
+                            ::cmd_parser::Parser::<#parse_ctx>::complete(&#parser_ident, input, ctx.clone())
                         });
                         match result.remaining {
                             Some(remaining) => input = remaining,
@@ -92,7 +92,7 @@ impl<'a> FieldView<'a> {
                 quote! {
                     #name => {
                         let (result, remaining) = unexpected.remaining().with_nested(|input| {
-                            ::cmd_parser::Parser::<#parse_ctx>::parse(&self.#parser_ident, input)
+                            ::cmd_parser::Parser::<#parse_ctx>::parse(&#parser_ident, input, ctx.clone())
                         })?;
                         input = remaining;
                         #var_ident = Some(result);
@@ -120,7 +120,7 @@ impl<'a> FieldView<'a> {
                 quote! {
                     #name => {
                         let result = remaining.complete_nested(|input| {
-                            ::cmd_parser::Parser::<#parse_ctx>::complete(&self.#parser_ident, input)
+                            ::cmd_parser::Parser::<#parse_ctx>::complete(&#parser_ident, input, ctx.clone())
                         });
                         match result.remaining {
                             Some(remaining) => input = remaining,

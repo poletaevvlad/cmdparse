@@ -48,10 +48,6 @@ impl<'a> CodegenContext<'a> {
             .or_insert_with(|| ParserIndex(items_count))
     }
 
-    pub(crate) fn ctx_requires_clone(&self) -> bool {
-        self.parsers.len() > 1
-    }
-
     pub(crate) fn parse_context_ident(&self) -> TokenStream {
         match &self.context_type {
             Some(ContextType::Concrete(ty)) => quote! {#ty},

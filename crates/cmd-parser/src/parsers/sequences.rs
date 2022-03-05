@@ -24,8 +24,8 @@ macro_rules! impl_parsable_collection {
             $append
         }
 
-        impl<Ctx, T: Parsable<Ctx> $(+ $bound_1 $(+ $bound)*)?> Parsable<Ctx> for $ty {
-            type Parser = CollectionParser<Ctx, Self, T::Parser>;
+        impl<Ctx: Clone, T: Parsable<Ctx> $(+ $bound_1 $(+ $bound)*)?> Parsable<Ctx> for $ty {
+            type Parser = CollectionParser<Self, T::Parser>;
         }
     };
 }
@@ -128,30 +128,31 @@ impl_parsable_collection! {BTreeSet<T> where T: Eq + Hash + Ord {
 /// # Ok(())
 /// # }
 /// ```
-pub struct CollectionParser<Ctx, C: ParsableCollection<Ctx>, P: Parser<Ctx, Value = C::Item>> {
-    _ctx_phantom: PhantomData<Ctx>,
+pub struct CollectionParser<C, P> {
     _collection_phanton: PhantomData<C>,
-    inner_parser: P,
+    _parser_phantom: PhantomData<P>,
 }
 
-impl<Ctx, C: ParsableCollection<Ctx> + Default, P: Parser<Ctx, Value = C::Item>> Parser<Ctx>
-    for CollectionParser<Ctx, C, P>
+impl<C, P> Default for CollectionParser<C, P> {
+    fn default() -> Self {
+        Self {
+            _collection_phanton: PhantomData,
+            _parser_phantom: PhantomData,
+        }
+    }
+}
+
+impl<Ctx: Clone, C: ParsableCollection<Ctx> + Default, P: Parser<Ctx, Value = C::Item>> Parser<Ctx>
+    for CollectionParser<C, P>
 {
     type Value = C;
 
-    fn create(ctx: Ctx) -> Self {
-        CollectionParser {
-            _ctx_phantom: PhantomData,
-            _collection_phanton: PhantomData,
-            inner_parser: P::create(ctx),
-        }
-    }
-
-    fn parse<'a>(&self, mut input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
+    fn parse<'a>(&self, mut input: TokenStream<'a>, ctx: Ctx) -> ParseResult<'a, Self::Value> {
+        let parser = P::default();
         let mut is_first = true;
         let mut result = C::default();
         while !input.is_empty() {
-            let item_result = input.with_nested(|input| self.inner_parser.parse(input));
+            let item_result = input.with_nested(|input| parser.parse(input, ctx.clone()));
             match item_result {
                 Ok((value, remaining)) => {
                     result.append(value);
@@ -171,11 +172,12 @@ impl<Ctx, C: ParsableCollection<Ctx> + Default, P: Parser<Ctx, Value = C::Item>>
         Ok((result, input))
     }
 
-    fn complete<'a>(&self, mut input: TokenStream<'a>) -> CompletionResult<'a> {
+    fn complete<'a>(&self, mut input: TokenStream<'a>, ctx: Ctx) -> CompletionResult<'a> {
+        let parser = P::default();
         let mut is_first = true;
         let mut suggestions = BTreeSet::new();
         while !input.is_empty() {
-            let item_result = input.complete_nested(|input| self.inner_parser.complete(input));
+            let item_result = input.complete_nested(|input| parser.complete(input, ctx.clone()));
             if let Some(remaining) = item_result.remaining {
                 input = remaining;
             } else {
@@ -209,20 +211,22 @@ pub struct DefaultValueParser<T> {
     _phantom: PhantomData<T>,
 }
 
-impl<Ctx, T: Default> Parser<Ctx> for DefaultValueParser<T> {
-    type Value = T;
-
-    fn create(_ctx: Ctx) -> Self {
+impl<T> Default for DefaultValueParser<T> {
+    fn default() -> Self {
         DefaultValueParser {
             _phantom: PhantomData,
         }
     }
+}
 
-    fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
+impl<Ctx, T: Default> Parser<Ctx> for DefaultValueParser<T> {
+    type Value = T;
+
+    fn parse<'a>(&self, input: TokenStream<'a>, _ctx: Ctx) -> ParseResult<'a, Self::Value> {
         Ok((<T as Default>::default(), input))
     }
 
-    fn complete<'a>(&self, input: TokenStream<'a>) -> CompletionResult<'a> {
+    fn complete<'a>(&self, input: TokenStream<'a>, _ctx: Ctx) -> CompletionResult<'a> {
         CompletionResult::new(input, true)
     }
 }
@@ -263,25 +267,29 @@ pub mod tuples {
             /// Parser implementation of a tuple of a specific size
             #[allow(non_snake_case)]
             pub struct $parser_name<$param_first, $($param),*> {
-                $param_first: $param_first,
-                $( $param: $param, )*
+                $param_first: PhantomData<$param_first>,
+                $( $param: PhantomData<$param>, )*
+            }
+
+            impl<$param_first $(, $param)*> Default for $parser_name<$param_first $(, $param)*> {
+                fn default() -> Self {
+                    $parser_name {
+                        $param_first: PhantomData,
+                        $( $param: PhantomData, )*
+                    }
+                }
             }
 
             impl<Ctx: Clone, $param_first: Parser<Ctx>, $($param: Parser<Ctx>),*> Parser<Ctx> for $parser_name<$param_first, $($param),*> {
                 type Value = ($param_first::Value, $($param::Value,)*);
 
-                fn create(ctx: Ctx) -> Self {
-                    $parser_name {
-                        $param_first: $param_first::create(ctx.clone()),
-                        $($param: $param::create(ctx.clone())),*
-                    }
-                }
-
                 #[allow(non_snake_case, unused_mut)]
-                fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
-                    let ($param_first, mut input) = input.with_nested(|input| self.$param_first.parse(input))?;
+                fn parse<'a>(&self, input: TokenStream<'a>, ctx: Ctx) -> ParseResult<'a, Self::Value> {
+                    let parser = $param_first::default();
+                    let ($param_first, mut input) = input.with_nested(|input| parser.parse(input, ctx.clone()))?;
                     $(
-                        let $param = match input.with_nested(|input| self.$param.parse(input)) {
+                        let parser = $param::default();
+                        let $param = match input.with_nested(|input| parser.parse(input, ctx.clone())) {
                             Ok((value, remaining)) => {
                                 input = remaining;
                                 value
@@ -294,8 +302,9 @@ pub mod tuples {
                 }
 
                 #[allow(unused_mut)]
-                fn complete<'a>(&self, mut input: TokenStream<'a>) -> CompletionResult<'a> {
-                    let result = input.complete_nested(|input| self.$param_first.complete(input));
+                fn complete<'a>(&self, mut input: TokenStream<'a>, ctx: Ctx) -> CompletionResult<'a> {
+                    let parser = $param_first::default();
+                    let result = input.complete_nested(|input| parser.complete(input, ctx.clone()));
                     if let Some(remaining) = result.remaining {
                         input = remaining;
                     } else {
@@ -307,7 +316,8 @@ pub mod tuples {
                     let mut suggestions = result.suggestions;
 
                     $(
-                        let result = input.complete_nested(|input| self.$param.complete(input));
+                        let parser = $param::default();
+                        let result = input.complete_nested(|input| parser.complete(input, ctx.clone()));
                         if let Some(remaining) = result.remaining {
                             input = remaining;
                         } else {
@@ -354,26 +364,27 @@ pub mod tuples {
 /// error, this parser fails also.
 ///
 /// When performing completion, the value is always considered to be consumed.
-pub struct OptionParser<Ctx, P: Parser<Ctx>> {
-    _ctx_phantom: PhantomData<Ctx>,
-    inner_parser: P,
+pub struct OptionParser<P> {
+    _inner: PhantomData<P>,
 }
 
-impl<Ctx, T: Parser<Ctx>> Parser<Ctx> for OptionParser<Ctx, T> {
-    type Value = Option<T::Value>;
-
-    fn create(ctx: Ctx) -> Self {
-        OptionParser {
-            _ctx_phantom: PhantomData,
-            inner_parser: T::create(ctx),
+impl<P> Default for OptionParser<P> {
+    fn default() -> Self {
+        Self {
+            _inner: PhantomData,
         }
     }
+}
 
-    fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
+impl<Ctx, P: Parser<Ctx>> Parser<Ctx> for OptionParser<P> {
+    type Value = Option<P::Value>;
+
+    fn parse<'a>(&self, input: TokenStream<'a>, ctx: Ctx) -> ParseResult<'a, Self::Value> {
         if input.is_empty() {
             Ok((None, input))
         } else {
-            match self.inner_parser.parse(input) {
+            let parser = P::default();
+            match parser.parse(input, ctx) {
                 Ok((value, remaining)) => Ok((Some(value), remaining)),
                 Err(error @ ParseFailure::Error(_)) => Err(error),
                 Err(ParseFailure::Unrecognized(unrecognized)) => {
@@ -387,13 +398,13 @@ impl<Ctx, T: Parser<Ctx>> Parser<Ctx> for OptionParser<Ctx, T> {
         }
     }
 
-    fn complete<'a>(&self, input: TokenStream<'a>) -> CompletionResult<'a> {
-        self.inner_parser.complete(input).set_consumed(true)
+    fn complete<'a>(&self, input: TokenStream<'a>, ctx: Ctx) -> CompletionResult<'a> {
+        P::default().complete(input, ctx).set_consumed(true)
     }
 }
 
 impl<Ctx, T: Parsable<Ctx>> Parsable<Ctx> for Option<T> {
-    type Parser = OptionParser<Ctx, T::Parser>;
+    type Parser = OptionParser<T::Parser>;
 }
 
 /// Generic fallible transformation between two types for parsing
@@ -498,19 +509,23 @@ pub trait ParsableTransformation<O> {
 /// assert!(parse_parser::<_, PowerOfTwoParser<()>>("14", ()).is_err());
 /// # }
 /// ```
-pub struct TransformParser<Ctx, P, T, O>
-where
-    P: Parser<Ctx>,
-    T: ParsableTransformation<O, Input = P::Value>,
-    T::Input: Parsable<Ctx>,
-{
-    _ctx_phantom: PhantomData<Ctx>,
-    _out_phantom: PhantomData<O>,
-    _input_phantom: PhantomData<T>,
-    parser: P,
+pub struct TransformParser<P, T, O> {
+    _parser_phantom: PhantomData<P>,
+    _transformer_phantom: PhantomData<T>,
+    _output_phantom: PhantomData<O>,
 }
 
-impl<Ctx, P, T, O> Parser<Ctx> for TransformParser<Ctx, P, T, O>
+impl<P, T, O> Default for TransformParser<P, T, O> {
+    fn default() -> Self {
+        TransformParser {
+            _parser_phantom: PhantomData,
+            _transformer_phantom: PhantomData,
+            _output_phantom: PhantomData,
+        }
+    }
+}
+
+impl<Ctx, P, T, O> Parser<Ctx> for TransformParser<P, T, O>
 where
     P: Parser<Ctx>,
     T: ParsableTransformation<O, Input = P::Value>,
@@ -518,23 +533,16 @@ where
 {
     type Value = O;
 
-    fn create(ctx: Ctx) -> Self {
-        TransformParser {
-            _ctx_phantom: PhantomData,
-            _out_phantom: PhantomData,
-            _input_phantom: PhantomData,
-            parser: P::create(ctx),
-        }
-    }
-
-    fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
-        let (value, remaining) = self.parser.parse(input)?;
+    fn parse<'a>(&self, input: TokenStream<'a>, ctx: Ctx) -> ParseResult<'a, Self::Value> {
+        let parser = P::default();
+        let (value, remaining) = parser.parse(input, ctx)?;
         let transformed = <T as ParsableTransformation<O>>::transform(value)?;
         Ok((transformed, remaining))
     }
 
-    fn complete<'a>(&self, input: TokenStream<'a>) -> CompletionResult<'a> {
-        self.parser.complete(input)
+    fn complete<'a>(&self, input: TokenStream<'a>, ctx: Ctx) -> CompletionResult<'a> {
+        let parser = P::default();
+        parser.complete(input, ctx)
     }
 }
 
@@ -547,7 +555,7 @@ impl<T> ParsableTransformation<Box<T>> for T {
 }
 
 impl<Ctx, T: Parsable<Ctx>> Parsable<Ctx> for Box<T> {
-    type Parser = TransformParser<Ctx, T::Parser, T, Box<T>>;
+    type Parser = TransformParser<T::Parser, T, Box<T>>;
 }
 
 #[cfg(test)]
@@ -560,16 +568,13 @@ mod tests {
     #[derive(PartialEq, Eq, Debug)]
     struct MockEnum;
 
+    #[derive(Default)]
     struct MockEnumParser;
 
     impl<Ctx> Parser<Ctx> for MockEnumParser {
         type Value = MockEnum;
 
-        fn create(_ctx: Ctx) -> Self {
-            MockEnumParser
-        }
-
-        fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
+        fn parse<'a>(&self, input: TokenStream<'a>, _ctx: Ctx) -> ParseResult<'a, Self::Value> {
             let (token, remaining) = input.take().ok_or_else(ParseError::token_required)??;
             match token {
                 Token::Text(text) => {
@@ -584,7 +589,7 @@ mod tests {
             }
         }
 
-        fn complete<'a>(&self, _input: TokenStream<'a>) -> CompletionResult<'a> {
+        fn complete<'a>(&self, _input: TokenStream<'a>, _ctx: Ctx) -> CompletionResult<'a> {
             todo!()
         }
     }

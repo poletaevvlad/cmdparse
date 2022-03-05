@@ -30,16 +30,13 @@ fn reduce_dir_contents<T>(path: &Path, initial: T, reducer: impl Fn(T, &str) -> 
 /// the token are transformed into a [`PathBuf`]. When performing completion this parser enumerates
 /// the directory at the given path and suggests completions that would point to existing directory
 /// items.
+#[derive(Default)]
 pub struct PathParser;
 
 impl<Ctx> Parser<Ctx> for PathParser {
     type Value = PathBuf;
 
-    fn create(_ctx: Ctx) -> Self {
-        PathParser
-    }
-
-    fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
+    fn parse<'a>(&self, input: TokenStream<'a>, _ctx: Ctx) -> ParseResult<'a, Self::Value> {
         match input.take() {
             Some(Ok((token, remaining))) => match token {
                 Token::Text(text) => Ok((text.parse_string().into_owned().into(), remaining)),
@@ -50,7 +47,7 @@ impl<Ctx> Parser<Ctx> for PathParser {
         }
     }
 
-    fn complete<'a>(&self, input: TokenStream<'a>) -> CompletionResult<'a> {
+    fn complete<'a>(&self, input: TokenStream<'a>, _ctx: Ctx) -> CompletionResult<'a> {
         match input.take() {
             Some(Ok((Token::Text(_), remaining))) if !remaining.is_all_consumed() => {
                 CompletionResult::new(remaining, true)
@@ -152,10 +149,10 @@ mod tests {
 
         macro_rules! assert_completion {
             ($name:literal, [$($expected:literal),*]) => {
-                let parser = <PathBuf as Parsable<()>>::new_parser(());
+                let parser = <PathBuf as Parsable<()>>::Parser::default();
                 let input = format!("{}/{}", path.as_os_str().to_str().unwrap(), $name);
                 let tokens = TokenStream::new(&input);
-                let results = Parser::<()>::complete(&parser, tokens);
+                let results = Parser::<()>::complete(&parser, tokens, ());
                 assert!(results.value_consumed, "not consumed for input {}", $name);
                 assert!(results.remaining.is_none(), "not final for input {}", $name);
                 assert_eq!(results.suggestions, BTreeSet::from([$($expected.into()),*]), "suggestions incorrect for input {}", $name);

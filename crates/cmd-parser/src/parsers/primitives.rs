@@ -104,11 +104,7 @@ where
 {
     type Value = T;
 
-    fn create(_ctx: Ctx) -> Self {
-        Self::default()
-    }
-
-    fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
+    fn parse<'a>(&self, input: TokenStream<'a>, _ctx: Ctx) -> ParseResult<'a, Self::Value> {
         let (token, remaining) = input
             .take()
             .transpose()?
@@ -132,7 +128,7 @@ where
         }
     }
 
-    fn complete<'a>(&self, input: TokenStream<'a>) -> CompletionResult<'a> {
+    fn complete<'a>(&self, input: TokenStream<'a>, _ctx: Ctx) -> CompletionResult<'a> {
         complete_token_single(input)
     }
 }
@@ -219,11 +215,7 @@ no_state_parsable!(std::net::SocketAddr, FromStrParser);
 impl<T: FromStr, Ctx> Parser<Ctx> for FromStrParser<T> {
     type Value = T;
 
-    fn create(_ctx: Ctx) -> Self {
-        Self::default()
-    }
-
-    fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
+    fn parse<'a>(&self, input: TokenStream<'a>, _ctx: Ctx) -> ParseResult<'a, Self::Value> {
         let (token, remaining) = input
             .take()
             .transpose()?
@@ -239,7 +231,7 @@ impl<T: FromStr, Ctx> Parser<Ctx> for FromStrParser<T> {
         }
     }
 
-    fn complete<'a>(&self, input: TokenStream<'a>) -> CompletionResult<'a> {
+    fn complete<'a>(&self, input: TokenStream<'a>, _ctx: Ctx) -> CompletionResult<'a> {
         complete_token_single(input)
     }
 }
@@ -268,11 +260,7 @@ pub struct StringParser;
 impl<Ctx> Parser<Ctx> for StringParser {
     type Value = String;
 
-    fn create(_ctx: Ctx) -> Self {
-        StringParser
-    }
-
-    fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
+    fn parse<'a>(&self, input: TokenStream<'a>, _ctx: Ctx) -> ParseResult<'a, Self::Value> {
         let (token, remaining) = input
             .take()
             .transpose()?
@@ -283,7 +271,7 @@ impl<Ctx> Parser<Ctx> for StringParser {
         }
     }
 
-    fn complete<'a>(&self, input: TokenStream<'a>) -> CompletionResult<'a> {
+    fn complete<'a>(&self, input: TokenStream<'a>, _ctx: Ctx) -> CompletionResult<'a> {
         complete_token_single(input)
     }
 }
@@ -319,11 +307,7 @@ pub struct BooleanParser;
 impl<Ctx> Parser<Ctx> for BooleanParser {
     type Value = bool;
 
-    fn create(_ctx: Ctx) -> Self {
-        BooleanParser
-    }
-
-    fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
+    fn parse<'a>(&self, input: TokenStream<'a>, _ctx: Ctx) -> ParseResult<'a, Self::Value> {
         let (token, remaining) = input
             .take()
             .transpose()?
@@ -338,7 +322,7 @@ impl<Ctx> Parser<Ctx> for BooleanParser {
         }
     }
 
-    fn complete<'a>(&self, input: TokenStream<'a>) -> CompletionResult<'a> {
+    fn complete<'a>(&self, input: TokenStream<'a>, _ctx: Ctx) -> CompletionResult<'a> {
         match input.take() {
             Some(Ok((Token::Text(text), remaining))) if remaining.is_all_consumed() => {
                 let text = text.parse_string();
@@ -370,17 +354,17 @@ mod tests {
             #[test]
             #[allow(clippy::bool_assert_comparison)]
             fn $name() {
-                let parser = <$type as Parsable<()>>::new_parser(());
+                let parser = <$type as Parsable<()>>::Parser::default();
 
                 let stream = TokenStream::new($text);
-                let (result, remaining) = Parser::<()>::parse(&parser, stream).unwrap();
+                let (result, remaining) = Parser::<()>::parse(&parser, stream, ()).unwrap();
                 assert_eq!(result, $value);
                 assert!(remaining.peek().is_none());
 
                 let mut input = $text.to_string();
                 input.push_str(" abc");
                 let stream = TokenStream::new(&input);
-                let (result, remaining) = Parser::<()>::parse(&parser, stream).unwrap();
+                let (result, remaining) = Parser::<()>::parse(&parser, stream, ()).unwrap();
                 assert_eq!(result, $value);
                 assert_eq!(remaining.peek().unwrap().unwrap(), token!("abc"));
             }
@@ -388,9 +372,9 @@ mod tests {
         ($name:ident, $type:ty, $text:literal => Err($err:expr)) => {
             #[test]
             fn $name() {
-                let parser = <$type as Parsable<()>>::new_parser(());
+                let parser = <$type as Parsable<()>>::Parser::default();
                 let stream = TokenStream::new($text);
-                let failure = Parser::<()>::parse(&parser, stream).unwrap_err();
+                let failure = Parser::<()>::parse(&parser, stream, ()).unwrap_err();
                 match failure {
                     ParseFailure::Error(error) => assert_eq!(error, $err),
                     ParseFailure::Unrecognized(_) => panic!("expected Error, got {:?}", failure),
@@ -403,9 +387,9 @@ mod tests {
         ($name:ident, $type:ty) => {
             #[test]
             fn $name() {
-                let parser = <$type as Parsable<()>>::new_parser(());
+                let parser = <$type as Parsable<()>>::Parser::default();
                 let stream = TokenStream::new("--unrecognized abc");
-                let failure = Parser::<()>::parse(&parser, stream).unwrap_err();
+                let failure = Parser::<()>::parse(&parser, stream, ()).unwrap_err();
                 match failure {
                     ParseFailure::Error(_) => panic!("expected Unrecognized, got {:?}", failure),
                     ParseFailure::Unrecognized(unrecognized) => {
@@ -479,15 +463,15 @@ mod tests {
 
         #[test]
         fn parse_f64() {
-            let parser = <f64 as Parsable<()>>::new_parser(());
+            let parser = <f64 as Parsable<()>>::Parser::default();
 
             let stream = TokenStream::new("3.2");
-            let (result, remaining) = Parser::<()>::parse(&parser, stream).unwrap();
+            let (result, remaining) = Parser::<()>::parse(&parser, stream, ()).unwrap();
             assert!((result - 3.2).abs() < f64::EPSILON);
             assert!(remaining.peek().is_none());
 
             let stream = TokenStream::new("3.2 abc");
-            let (result, remaining) = Parser::<()>::parse(&parser, stream).unwrap();
+            let (result, remaining) = Parser::<()>::parse(&parser, stream, ()).unwrap();
             assert!((result - 3.2).abs() < f64::EPSILON);
             assert_eq!(remaining.peek().unwrap().unwrap(), token!("abc"));
         }

@@ -117,28 +117,23 @@ mod custom_ctx {
     use super::*;
     use cmd_parser::{tokens::TokenStream, ParseResult, Parser};
 
-    struct MyParser {
-        multiplier: u8,
-        u8_parser: <u8 as Parsable<u8>>::Parser,
-    }
+    #[derive(Default)]
+    struct MyParser;
 
     impl Parser<u8> for MyParser {
         type Value = u8;
 
-        fn create(ctx: u8) -> Self {
-            MyParser {
-                multiplier: ctx,
-                u8_parser: <u8 as Parsable<u8>>::new_parser(ctx),
-            }
+        fn parse<'a>(&self, input: TokenStream<'a>, ctx: u8) -> ParseResult<'a, Self::Value> {
+            let (value, remaining) = <u8 as Parsable<u8>>::Parser::default().parse(input, ctx)?;
+            Ok((value * ctx, remaining))
         }
 
-        fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
-            let (value, remaining) = Parser::<u8>::parse(&self.u8_parser, input)?;
-            Ok((value * self.multiplier, remaining))
-        }
-
-        fn complete<'a>(&self, input: TokenStream<'a>) -> cmd_parser::CompletionResult<'a> {
-            Parser::<u8>::complete(&self.u8_parser, input)
+        fn complete<'a>(
+            &self,
+            input: TokenStream<'a>,
+            ctx: u8,
+        ) -> cmd_parser::CompletionResult<'a> {
+            <u8 as Parsable<u8>>::Parser::default().complete(input, ctx)
         }
     }
 
@@ -149,8 +144,9 @@ mod custom_ctx {
     #[test]
     fn parse() {
         let stream = TokenStream::new("5 2");
-        let parser = NewtypeCustomCtx::new_parser(4);
-        let (value, remaining) = Parser::<u8>::parse(&parser, stream).unwrap();
+        let (value, remaining) = <NewtypeCustomCtx as Parsable<u8>>::Parser::default()
+            .parse(stream, 4)
+            .unwrap();
         assert_eq!(value, NewtypeCustomCtx(20));
         assert_eq!(remaining.peek().unwrap().unwrap(), token!("2"));
     }
@@ -164,34 +160,32 @@ mod custom_ctx_bounds {
         fn get_multiplier(&self) -> u8;
     }
 
-    struct MyParser<Ctx: CustomCtx> {
-        multiplier: u8,
-        u8_parser: <u8 as Parsable<Ctx>>::Parser,
-    }
+    #[derive(Default)]
+    struct MyParser;
 
-    impl<Ctx: CustomCtx> Parser<Ctx> for MyParser<Ctx> {
+    impl<Ctx: CustomCtx> Parser<Ctx> for MyParser {
         type Value = u8;
 
-        fn create(ctx: Ctx) -> Self {
-            MyParser {
-                multiplier: ctx.get_multiplier(),
-                u8_parser: <u8 as Parsable<Ctx>>::new_parser(ctx),
-            }
+        fn parse<'a>(&self, input: TokenStream<'a>, ctx: Ctx) -> ParseResult<'a, Self::Value> {
+            let multiplier = ctx.get_multiplier();
+            let (value, remaining) = <u8 as Parsable<Ctx>>::Parser::default()
+                .parse(input, ctx)
+                .unwrap();
+            Ok((value * multiplier, remaining))
         }
 
-        fn parse<'a>(&self, input: TokenStream<'a>) -> ParseResult<'a, Self::Value> {
-            let (value, remaining) = Parser::<u8>::parse(&self.u8_parser, input)?;
-            Ok((value * self.multiplier, remaining))
-        }
-
-        fn complete<'a>(&self, input: TokenStream<'a>) -> cmd_parser::CompletionResult<'a> {
-            Parser::<u8>::complete(&self.u8_parser, input)
+        fn complete<'a>(
+            &self,
+            input: TokenStream<'a>,
+            ctx: Ctx,
+        ) -> cmd_parser::CompletionResult<'a> {
+            <u8 as Parsable<Ctx>>::Parser::default().complete(input, ctx)
         }
     }
 
     #[derive(Debug, PartialEq, Eq, Parsable)]
     #[cmd(ctx_bounds = "CustomCtx")]
-    struct NewtypeCustomCtx(#[cmd(parser = "MyParser<CmdParserCtx>")] u8);
+    struct NewtypeCustomCtx(#[cmd(parser = "MyParser")] u8);
 
     #[derive(Clone)]
     struct MockCtx;
@@ -205,8 +199,9 @@ mod custom_ctx_bounds {
     #[test]
     fn parse() {
         let stream = TokenStream::new("5 2");
-        let parser = NewtypeCustomCtx::new_parser(MockCtx);
-        let (value, remaining) = Parser::<MockCtx>::parse(&parser, stream).unwrap();
+        let (value, remaining) = <NewtypeCustomCtx as Parsable<MockCtx>>::Parser::default()
+            .parse(stream, MockCtx)
+            .unwrap();
         assert_eq!(value, NewtypeCustomCtx(20));
         assert_eq!(remaining.peek().unwrap().unwrap(), token!("2"));
     }
