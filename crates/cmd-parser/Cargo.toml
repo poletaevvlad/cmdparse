@@ -8,3 +8,6 @@ cmd-parser-derive = { path = "../cmd-parser-derive" }
 
 [dev-dependencies]
 tempdir = "0.3"
+
+# Example dependencies
+rustyline = "9.1.0"

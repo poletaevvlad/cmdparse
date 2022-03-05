@@ -1,8 +1,8 @@
-use std::io::Write;
-
 use cmd_parser::error::ParseError;
 use cmd_parser::parsers::{ParsableTransformation, TransformParser};
 use cmd_parser::{parse_parser, Parsable};
+use rustyline::error::ReadlineError;
+use rustyline::Editor;
 
 #[derive(Debug, Parsable)]
 enum Expression {
@@ -49,17 +49,20 @@ impl ParsableTransformation<f64> for Expression {
 
 type EvaluationParser = TransformParser<ExpressionParser, Expression, f64>;
 
-fn main() -> std::io::Result<()> {
-    let stdin = std::io::stdin();
-    let mut buffer = String::new();
+fn main() {
+    let mut rl = Editor::<()>::new();
     loop {
-        print!("> ");
-        std::io::stdout().flush()?;
-        stdin.read_line(&mut buffer)?;
-        match parse_parser::<_, EvaluationParser>(&buffer, ()) {
-            Ok(value) => println!("< {:?}", value),
-            Err(err) => println!("Error: {}", err),
+        let readline = rl.readline(">> ");
+        match readline {
+            Ok(line) => match parse_parser::<_, EvaluationParser>(&line, ()) {
+                Ok(value) => println!("<< {}", value),
+                Err(err) => println!("Error: {}", err),
+            },
+            Err(ReadlineError::Interrupted | ReadlineError::Eof) => break,
+            Err(err) => {
+                println!("Error: {}", err);
+                break;
+            }
         }
-        buffer.clear();
     }
 }
