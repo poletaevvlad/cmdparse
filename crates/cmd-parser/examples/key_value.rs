@@ -1,8 +1,7 @@
 use cmd_parser::error::{ParseError, UnrecognizedToken};
 use cmd_parser::tokens::{Token, TokenStream};
-use cmd_parser::{parse, CompletionResult, Parsable, ParseResult, Parser};
+use cmd_parser::{complete_parser, parse, CompletionResult, Parsable, ParseResult, Parser};
 use rustyline::error::ReadlineError;
-use rustyline::Editor;
 use std::collections::HashMap;
 
 #[derive(Debug, Eq, PartialEq, Hash)]
@@ -76,12 +75,50 @@ enum Command {
     GetStrlen(Key),
 }
 
+struct CmdParserHelper<'a> {
+    context: ParsingContext<'a>,
+}
+
+impl<'a> CmdParserHelper<'a> {
+    fn new(context: ParsingContext<'a>) -> Self {
+        CmdParserHelper { context }
+    }
+}
+
+impl<'a> rustyline::completion::Completer for CmdParserHelper<'a> {
+    type Candidate = String;
+
+    fn complete(
+        &self,
+        line: &str,
+        pos: usize,
+        _ctx: &rustyline::Context<'_>,
+    ) -> rustyline::Result<(usize, Vec<Self::Candidate>)> {
+        let input = &line[..pos];
+        let suggestions: Vec<_> =
+            complete_parser::<ParsingContext, CommandParser>(input, self.context)
+                .into_iter()
+                .map(|suggestion| suggestion.to_string())
+                .collect();
+        Ok((pos, suggestions))
+    }
+}
+
+impl<'a> rustyline::Helper for CmdParserHelper<'a> {}
+impl<'a> rustyline::highlight::Highlighter for CmdParserHelper<'a> {}
+impl<'a> rustyline::validate::Validator for CmdParserHelper<'a> {}
+impl<'a> rustyline::hint::Hinter for CmdParserHelper<'a> {
+    type Hint = String;
+}
+
 fn main() {
     let mut data = HashMap::new();
 
-    let mut rl = Editor::<()>::new();
     loop {
+        let mut rl = rustyline::Editor::new();
+        rl.set_helper(Some(CmdParserHelper::new(&data)));
         let readline = rl.readline("storage> ");
+
         match readline {
             Ok(line) => match parse::<_, Command>(&line, &data) {
                 Ok(Command::Set(key, value)) => {
