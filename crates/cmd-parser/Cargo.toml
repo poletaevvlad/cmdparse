@@ -11,3 +11,4 @@ tempdir = "0.3"
 
 # Example dependencies
 rustyline = "9.1.0"
+smallvec = "1.8.0"

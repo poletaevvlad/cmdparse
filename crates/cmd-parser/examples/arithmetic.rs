@@ -28,6 +28,7 @@ enum Expression {
         #[cmd(parser = "EvaluationParser")] f64,
         #[cmd(parser = "EvaluationParser")] f64,
     ),
+    Sqrt(#[cmd(parser = "EvaluationParser")] f64),
 }
 
 impl ParsableTransformation<f64> for Expression {
@@ -43,6 +44,10 @@ impl ParsableTransformation<f64> for Expression {
                 Err(ParseError::custom("cannot divide by zero"))
             }
             Expression::Divide(a, b) => Ok(a / b),
+            Expression::Sqrt(a) if a < 0.0 => Err(ParseError::custom(
+                "cannot take square root of a negative number",
+            )),
+            Expression::Sqrt(a) => Ok(a.sqrt()),
         }
     }
 }

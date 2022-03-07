@@ -529,7 +529,6 @@ impl<Ctx, P, T, O> Parser<Ctx> for TransformParser<P, T, O>
 where
     P: Parser<Ctx>,
     T: ParsableTransformation<O, Input = P::Value>,
-    T::Input: Parsable<Ctx>,
 {
     type Value = O;
 
