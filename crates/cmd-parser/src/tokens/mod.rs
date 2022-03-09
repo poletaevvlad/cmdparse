@@ -1,13 +1,14 @@
-//! Spliting the input stream into a sequence of tokens
+//! Splitting the input stream into a sequence of tokens
 //!
-//! `cmd_parser`'s parsers do not work on the input string directly. Instead, they operate on the
-//! token stream &mdash; a sequence of tokens each representing a text payload or an attribute name
-//! (a token with preceding `--`). Token stream does not include whitespaces or comments (starting
-//! with an octothorp `#`). Token may unclude whitespace characters if its content is surrounded by
-//! quotation marks (either `'` or `"`).
+//! `cmd_parser`’s parsers do not work on the input string directly. Instead, they operate on the
+//! token stream — an iterator-like sequence of tokens, each representing a text payload or an
+//! attribute name (a token with preceding `--`). Token stream does not include whitespaces or
+//! comments (substrings beginning from the first octothorp (`#`) in the input). A token may
+//! include whitespace characters if its content is surrounded by quotation marks (either `'` or
+//! `"`).
 //!
-//! For example let's consider the following string and the list token it is going to be parsed
-//! into:
+//! For example, let’s consider the following string and the sequence of tokens it is going to be
+//! parsed into:
 //!
 //! ```
 //! # use cmd_parser::tokens::{TokenStream, Token, RawLexeme, UnbalancedParenthesis};
@@ -36,13 +37,12 @@
 //! ```
 //!
 //! Note the following:
-//!  * The token stream is represented by the instance of a [`TokenStream`]. It is immurable
+//!  * The token stream is represented by the instance of a [`TokenStream`]. It is immutable
 //!    (`take` method returns another instance representing the remainder of the input stream).
 //!  * Each [`Token`] can be either `Text` or `Attribute`. All whitespaces and comments are
 //!    discarded from the stream.
 //!  * The contents of the token is a [`RawLexeme`] &mdash; a thin wrapper around an input slice.
 //!    Each [`RawLexeme`] can be parsed into the intended representation:
-//!
 //! ```
 //! # use cmd_parser::tokens::RawLexeme;
 //! let lexeme = RawLexeme::new(r#""Hello, \"world\"""#);
@@ -57,18 +57,18 @@ use std::borrow::Cow;
 use std::fmt::{self, Write};
 pub use stream::TokenStream;
 
-/// A wrapper type for slices of the input string corresponding to a single lexeme
+/// A wrapper type for a slice of the input string corresponding to a single lexeme
 ///
-/// `RawLexeme` holds a string slice containing characters that belong to a single token: either
-/// text or the attribute. In case of attributes leading `--` is not included.
+/// RawLexeme holds a string slice containing characters that belong to a single token: either text
+/// or the attribute. In case of attributes, leading &ldquo;`--`&rdquo; is not included.
 ///
 /// This struct exists to make direct matches and comparisons intentionally difficult. The token
-/// may be enclosed in a string with escaped characters, so direct comparisons may cause unexpected
-/// bugs: the token `"abc\"def"` should be considered equal to `abc"def` and slice comparisons
-/// would not produce such result.
+/// may be enclosed in quotation marks and contain escaped characters, so direct comparisons
+/// between input slices may cause unexpected bugs: the token "abc\"def" should be considered equal
+/// to abc"def and slice comparisons would not produce such result.
 ///
-/// When parser implementation needs to access the lexeme's contents it should call the
-/// [`RawLexeme::parse_string`] method.
+/// When a parser implementation needs to access the lexeme’s contents, it should call the
+/// [`parse_string`](RawLexeme::parse_string) method.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RawLexeme<'a>(&'a str);
 
@@ -78,10 +78,11 @@ impl<'a> RawLexeme<'a> {
         RawLexeme(text)
     }
 
-    /// Parses a lexeme: for a quoted string returns an owned string without quotation marks and
-    /// with escaped characters escaped. For a string without quotes returns a slice as is.
+    /// Parses a lexeme: for a string surrounded by the quotation marks, returns an owned string
+    /// without quotation marks and with escaped characters replaced. For a string without quotes,
+    /// this function returns a slice reference as is.
     ///
-    /// Note that the quotes don't need to be closed. If absent, the closing quotation mark is
+    /// Note that the quotes don’t need to be closed. If absent, the closing quotation mark is
     /// implied.
     pub fn parse_string(self) -> Cow<'a, str> {
         let text = self.0;
@@ -127,26 +128,26 @@ impl<'a> fmt::Display for RawLexeme<'a> {
     }
 }
 
-/// A item of the token stream
+/// An item of the token stream
 ///
-/// Values of this type represent minimal unit containing within a token stream. Each token can
+/// Values of this type represent the minimal unit containing within a token stream. Each token can
 /// represent either an attribute (a lexeme preceded by two consecutive `-` characters) or text (a
 /// lexeme without preceding dashes). A lexeme can be either a sequence of any non-whitespace
 /// characters or a sequence of any characters enclosed in quotation marks (`"` or `'`). In the
-/// latter case, lexeme may contain quotation marks of the same kind as the enclosing one only if
-/// it is escaped i.e. preceded by the slash (`\`).
+/// latter case, lexemes may contain quotation marks of the same kind as the enclosing one, only if
+/// it is preceded by the slash (`\`).
 ///
-/// The following tables demonstrates some examples of valid tokens:
+/// The following table demonstrates some examples of valid tokens:
 ///
-/// | Token type | Examples                                                                |
-/// |------------|-------------------------------------------------------------------------|
-/// | Text       | `text`, `"quoted string"`,`'with single quotes'`, `"with \"escaping\""` |
-/// | Attribute  |`--attribute`, `--"attributes can be escaped too"`, `--`                 |
+/// | Token type | Examples                                                                 |
+/// |------------|--------------------------------------------------------------------------|
+/// | Text       | `text`, `"quoted string"`, `'with single quotes'`, `"with \"escaping\""` |
+/// | Attribute  |`--attribute`, `--"attributes can be escaped too"`, `--`                  |
 ///
-/// It two dashes are followed by whitespace character, an octothorp (`#`) indicating the start of
-/// a comment, or parenthesis (either opening or closing), then it indicates a valid empty
-/// attribute. The same is not the case for the text tokens. The only way to have an empty text
-/// token is to enclose an empty string in quotation marks.
+/// It two dashes are followed by a whitespace character, an octothorp (`#`) indicating the start
+/// of a comment, or parenthesis (either opening or closing), then it's interpreted as a valid
+/// empty attribute. The same is not the case for the text tokens. The only way to have an empty
+/// text token is to enclose an empty string in quotation marks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Token<'a> {
     Text(RawLexeme<'a>),
@@ -154,7 +155,7 @@ pub enum Token<'a> {
 }
 
 impl<'a> Token<'a> {
-    /// Returns a raw lexeme referencing the token's contents discarding information about its
+    /// Returns a raw lexeme referencing the token's contents, discarding information about its
     /// kind.
     pub fn into_raw_lexeme(self) -> RawLexeme<'a> {
         match self {
@@ -163,12 +164,12 @@ impl<'a> Token<'a> {
         }
     }
 
-    /// Returns true if the tokens represents an attribute
+    /// Returns true if the tokens represents an attribute.
     pub fn is_attribute(&self) -> bool {
         matches!(self, Token::Attribute(_))
     }
 
-    /// Returns true if the tokens represents text
+    /// Returns true if the tokens represents text.
     pub fn is_text(&self) -> bool {
         matches!(self, Token::Text(_))
     }
@@ -189,7 +190,7 @@ pub struct UnbalancedParenthesis;
 
 /// Computes all possible completions for a `token` from the possible complete token set of `variants`
 ///
-/// `variants` **must** be ordered. If `variants` is not ordered the behaviour of this function is
+/// `variants` **must** be ordered. If `variants` is not ordered, the behavior of this function is
 /// unspecified.
 ///
 /// `complete_variants` returns an iterator of string slices from variants that start with `token`

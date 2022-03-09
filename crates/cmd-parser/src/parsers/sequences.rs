@@ -62,16 +62,28 @@ impl_parsable_collection! {BTreeSet<T> where T: Eq + Hash + Ord {
 
 /// Parser implementation for any one-dimensional collection of items
 ///
-/// `CollectionParser` sequentially parses items using their default parser and constructs an
-/// instance of a [`ParsableCollection`]. The iteration stops if any of the parsing attempts fails
-/// with an error, when the end of the token stream is reached (all tokens are consumed or either
-/// the comment or the closing parenthesis is encountered) or when the item parser fails because of
-/// an unrecognized attribute.
+/// `CollectionParser` sequentially invokes the parser specified as the second type arguments,
+/// which produce items that are collected into a `ParsableCollection` an implementation of a trait
+/// that defines a way to construct a value from an unbounded number of items.
 ///
-/// Because `CollectionParser` tries to consume as many tokens as possible it may cause
-/// difficulties with multiple collections in a sequence. Consider the issue of parsing nested
-/// collections, for example `Vec<Vec<i32>>. If the items are presented sequentially in the input
-/// stream all of the tokens are going to be consumed by the first item.
+/// The parsing process continually consumes tokens from the input stream until any of the
+/// following occurs:
+///
+///  * parsing attempts fails with an error, in which case the collection's parsing is also fails
+///    with the same error;
+///  * when the parser reaches the end of the token stream, meaning all tokens are consumed, or
+///    either a comment or a closing parenthesis is encountered (see [`TokenStream`] documentation
+///    for more details);
+///  * when the item parser fails because it does not recognize an unrecognized attribute at the
+///    beginning of the stream.
+///
+/// In the second and the third case, the parsing finishes successfully. The parser does not
+/// recognize any additional attributes not supported by the underlying item parser.
+///
+/// Because CollectionParser tries to consume as many tokens as possible, it may cause difficulties
+/// with inner types with a variable number of tokens such as nested collections, for example
+/// `Vec<Vec<_>>`. If such cases when this parser is presented with a sequence of items' tokens,
+/// all of them are going to be consumed by the first item's parser:
 ///
 /// ```
 /// use cmd_parser::parse;
@@ -83,8 +95,8 @@ impl_parsable_collection! {BTreeSet<T> where T: Eq + Hash + Ord {
 /// # }
 /// ```
 ///
-/// This problem can be resolved by enclosing each of the inner collections' items with
-/// parenthesis:
+/// This problem can be resolved by the user by enclosing each of the inner collections’ token sets
+/// with parenthesis:
 ///
 /// ```
 /// # use cmd_parser::parse;
@@ -94,11 +106,11 @@ impl_parsable_collection! {BTreeSet<T> where T: Eq + Hash + Ord {
 /// # Ok(())
 /// # }
 /// ```
+///
 /// # Custom collections
 ///
-/// `cmd_parser` implements [`Parsable`] using `CollectionParser` as a default parser for
-/// collections from the Rust's standard library: [`Vec`], [`VecDeque`], [`LinkedList`],
-/// [`HashSet`], [`BTreeSet`].
+/// `cmd_parser` implements Parsable using CollectionParser as a default parser for collections from
+/// the Rust’s standard library: [`Vec`], [`VecDeque`], [`LinkedList`], [`HashSet`], [`BTreeSet`].
 ///
 /// It is easy to extend this list with a custom collection. To do so, one need to implement
 /// [`Default`], [`ParsableCollection`], and [`Parsable`] traits.
@@ -128,6 +140,10 @@ impl_parsable_collection! {BTreeSet<T> where T: Eq + Hash + Ord {
 /// # Ok(())
 /// # }
 /// ```
+///
+/// There are cases when implementing aforementioned traits is impossible or undesirable. In such
+/// cases, users of this crate may use the "newtype" pattern  (see `smallvec` example in the
+/// repository on how to us in for such use case).
 pub struct CollectionParser<C, P> {
     _collection_phanton: PhantomData<C>,
     _parser_phantom: PhantomData<P>,
@@ -205,8 +221,7 @@ impl<Ctx: Clone, C: ParsableCollection + Default, P: Parser<Ctx, Value = C::Item
 /// Parser implementation that always returns a default value of its generic argument
 ///
 /// This parser never fails, does not consume any tokens nor recognizes any attributes.
-///
-/// `DefaultValueParser` is used for types such as [`PhantomData`] or `()`
+/// [`DefaultValueParser`] is used as a default parser for types such as [`PhantomData`] or `()`.
 pub struct DefaultValueParser<T> {
     _phantom: PhantomData<T>,
 }
@@ -239,15 +254,14 @@ impl<Ctx, T> Parsable<Ctx> for PhantomData<T> {
     type Parser = DefaultValueParser<PhantomData<T>>;
 }
 
-/// Parser implementation for tuples of different sizes
+/// [`Parser`] implementation for tuples of different sizes
 ///
-/// Due to the limitations of Rust's type system, tuples of different sizes must have distinct
-/// parsers. The parsers for tuples for up to 16 elements are defined in this module. These types
-/// are rearely need to be used on its own due to the fact that corresponding tuples implement
-/// [`Parsable`] trait.
+/// Due to the limitations of Rust’s type system, tuples of different sizes must have distinct
+/// parsers. This module defines such parsers for tuples of up to 16 elements.
 ///
-/// For a tuple to be parsable, every type it contains must implement [`Parsable`] trait that
-/// supports compatible contexts.
+/// Implementations defined here are rarely needed to be used on its own due to the fact that
+/// corresponding tuples implement [`Parsable`] trait. For a tuple to be parsable, all its members
+/// must also implement the [`Parsable`] trait that supports compatible contexts.
 ///
 /// # Examples
 /// ```
@@ -264,7 +278,7 @@ pub mod tuples {
 
     macro_rules! gen_parsable_tuple {
         ($parser_name:ident, $param_first:ident $($param:ident)*) => {
-            /// Parser implementation of a tuple of a specific size
+            /// Parser implementation for a tuple of a specific size
             #[allow(non_snake_case)]
             pub struct $parser_name<$param_first, $($param),*> {
                 $param_first: PhantomData<$param_first>,
@@ -356,12 +370,16 @@ pub mod tuples {
     gen_parsable_tuple!(TupleParser16, T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 T12 T13 T14 T15 T16);
 }
 
-/// Parser implementation for [`Option<T>`]
+/// Parser implementation for Option<T>
 ///
 /// This parser calls delegates the parsing and completion to the parser passed as its generic
-/// parameter type and returns `Some` if the parsing succeded, `None` if the inner parser reported
-/// an unrecognized attribute or if the token stream is empty. If the inner parser fails due to an
-/// error, this parser fails also.
+/// parameter and returns:
+///
+///  * `Some(T)` if the parsing succeeds,
+///  * `None` if the inner parser reported an unrecognized attribute or if the token stream is
+///    empty.
+///
+/// If the inner parser fails due to an error, this parser fails also with the same error.
 ///
 /// When performing completion, the value is always considered to be consumed.
 pub struct OptionParser<P> {
@@ -411,14 +429,14 @@ impl<Ctx, T: Parsable<Ctx>> Parsable<Ctx> for Option<T> {
 ///
 /// See the documentation for [`TransformParser`] for more details.
 pub trait ParsableTransformation<O> {
-    /// The type that is going to be parsed using its default parser and then transformed.
+    /// The type that will be transformed by the implementation if this trait (`Self::Input -> O`).
     type Input;
 
     /// Performs the transformation.
     fn transform(input: Self::Input) -> Result<O, ParseError<'static>>;
 }
 
-/// Parser implementation that performs type converstion and validation after the parsing is
+/// Parser implementation that performs type conversion and validation after the parsing is
 /// complete
 ///
 /// This parser delegates the parsing and completion to the underlying parser. If parsing is
@@ -480,7 +498,7 @@ pub trait ParsableTransformation<O> {
 /// It is not important which trait implements [`ParsableTransformation`]. The trait is designed
 /// this way to circumvent the limitations of the Rust's type system: foreign traits cannot be
 /// implemented for foreign types. Also, it allows the user to define multiple different
-/// transformations for the same type which is useful for data validation.
+/// transformations for the same type, which is useful for data validation:
 ///
 /// ```
 /// use cmd_parser::{Parsable, parse_parser};

@@ -6,24 +6,23 @@ use crate::{CompletionResult, ParseResult};
 /// Representation of the input as a sequence of tokens
 ///
 /// The `TokenStrem` holds the reference of the input stream and is responsible for tokenizing it
-/// into a sequence of [`Token`]s. `TokenStream` is immutable, all operations that extract tokens
-/// from the stream must return another instance of a [`TokenStream`] representing tokens remaining
-/// in the stream.
+/// into a sequence of Tokens. TokenStream is immutable, all operations that extract tokens from
+/// the stream must return another instance of a TokenStream representing tokens remaining in the
+/// stream.
 ///
-/// Opening and closing parenthesis have special meaning for the token stream. They are intended to
-/// enclose tokens related to the same value to avoid ambiguity when parsing nested structures with
-/// unknown number of required arguments such as nested vectors. `TokenStream` aims to make
+/// Opening and closing parenthesis have special meaning for the token streams. They are intended
+/// to enclose tokens related to the same value to avoid ambiguity when parsing nested structures
+/// with unknown number of required arguments, such as nested vectors. TokenStream aims to make
 /// handling parenthesis as transparent as possible:
-///
-///  * attempt to take token from a stream if the non-consumed portion of the input starts with an
-///    opening parentesis fails with an [`UnbalancedParenthesis`] error;
+///  * attempt to take a token from a stream fails with an UnbalancedParenthesis error if the
+///    non-consumed portion of the input starts with an opening parenthesis;
 ///  * the token stream is considered to be empty if the non-consumed portion of the input start
 ///    with a closing parenthesis;
-///  * to handle a nested structure use either [`TokenStream::with_nested`] or
-///    [`TokenStream::complete_nested`]. These methods take a closure that returns a result and a
-///    `TokenStream` representing the remainder of the tokens that weren't consumed during parsing.
-///    Token Stream checks that all tokens consumed by the inner closure have been processed and return
-///    an appropriate error.
+///  * to handle nested structures, use either [`with_nested`](TokenStream::with_nested) or
+///    [`complete_nested`](TokenStream::complete_nested). These methods take a closure that returns
+///    a result and a `TokenStream` representing the remainder of the stream that wasn't consumed
+///    during parsing. Token stream checks that all tokens consumed by the inner closure have been
+///    processed and return an appropriate error otherwise.
 #[derive(Debug, Clone, Copy)]
 pub struct TokenStream<'a> {
     remaining: &'a str,
@@ -51,8 +50,8 @@ impl<'a> TokenStream<'a> {
         self.peek().is_none()
     }
 
-    /// Returns `true` if the entirety of the input string was consumed and the last token was not
-    /// followed by any whitespace characters or comments.
+    /// Returns `true` if the entirety of the input string was consumed and the last token is not
+    /// followed by any whitespace characters or a comment.
     ///
     /// This is useful when performing completion: suggestions should only be generated for the
     /// last token of the stream if it isn't followed by any other character.
@@ -72,8 +71,9 @@ impl<'a> TokenStream<'a> {
         }
     }
 
-    /// Returns the next token in the token stream if any. This is effitient operation that does
-    /// not cause any lexing operations and should be prefered when the token will not be consumed.
+    /// Returns the next token in the token stream, if any. This is an efficient operation that
+    /// does not cause any lexing operations and should be preferred when the token will not be
+    /// consumed.
     ///
     /// It returns:
     ///  * `Some(Ok(token))` if the stream is not empty;
@@ -88,9 +88,9 @@ impl<'a> TokenStream<'a> {
         }
     }
 
-    /// Returns the next token in the stream and an instance of the TokenStream representing the
-    /// remaining tokens. The behavior is similar to [`TokenStream::peek`] with the same returned
-    /// value with addition of a `TokenStream` instance.
+    /// Returns the next token in the stream and an instance of the [`TokenStream`] representing
+    /// the remaining tokens. The behavior is similar to [`peek`](TokenStream::peek) with the same
+    /// returned value with addition of a `TokenStream` instance.
     pub fn take(&self) -> Option<Result<(Token<'a>, TokenStream<'a>), UnbalancedParenthesis>> {
         match self.peek() {
             Some(Ok(token)) => Some(Ok((token, self.advance()))),
@@ -99,18 +99,17 @@ impl<'a> TokenStream<'a> {
         }
     }
 
-    /// Executes a closure on an inner portion of the token stream. The closure passed to
-    /// thes function returns either a parsed value along with the remaining `TokenSream` or a
-    /// parsing failure.
+    /// Executes a closure on an inner portion of the token stream. The closure passed to this
+    /// function returns either a parsed value along with the remaining `TokenSream`, or a parsing
+    /// failure.
     ///
-    /// This method behaves differently depending on wheather the non-consumed portion of the input
-    /// string starts with an opening parenthesis. If not, the value returned by the closure is
-    /// returned as is.
+    /// This method behaves differently depending on whether the non-consumed portion of the input
+    /// string starts with an opening parenthesis. If not, the value returned by the closure as is.
     ///
-    /// Otherwise, the parenthesis is consumed and the closure is called;
-    /// `with_nested` then returns a parse failure if the clausure call failed, or if there are any
-    /// not consumed tokens remaining. Note, that in case the closure fails due to an unrecognized
-    /// token, the failure is converted into an error.
+    /// Otherwise, this functions consumes the parenthesis, and calls the closure. `with_nested`
+    /// then returns a parse failure if the closure call failed or if there are any not consumed
+    /// tokens remaining. Note, that in case the closure fails due to an [`UnrecognizedToken`]
+    /// it's converted into an error.
     pub fn with_nested<R, F: FnOnce(TokenStream<'a>) -> ParseResult<'a, R>>(
         &self,
         callback: F,

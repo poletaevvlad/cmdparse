@@ -31,7 +31,7 @@ macro_rules! no_state_parsable {
 ///
 /// More specifically, this parser can be used to parse values of any type that implements
 /// [`FromStr`] trait with an error type [`ParseIntError`]. This parser consumes exactly one token
-/// on parsing and completion and doesn't yield and suggestions. It also does not recognize any
+/// during parsing and completion and doesn’t yield and suggestions. It also does not recognize any
 /// attributes.
 ///
 /// The implementation is similar to [`FromStrParser`] but it provides a special error messages for
@@ -135,17 +135,18 @@ where
 
 /// Generic parser implementation for any type that implements [`FromStr`] trait
 ///
-/// This parser consumes exactly one token and parses it using the target type's [`FromStr`]
-/// implementation. Note, that on failure, the error value is discarded. `FromStrParser` does not
-/// recognize any attributes and does not yield any completion suggestions.
+/// This parser consumes exactly one token and parses it using the target type’s [`FromStr`]
+/// implementation for producing the parser's result. Note, that on failure, the error value is
+/// discarded. `FromStrParser` does not recognize any attributes and does not yield any completion
+/// suggestions.
 ///
-/// Note that there is no blanket implementation of [`Parsable`] that uses this parser
-/// implementation. If you want to use this implementation for your custom type you must either
+/// Note, that there is no blanket implementation of [`Parsable`] that uses this parser
+/// implementation. If you want to use this implementation for any custom type, you must either
 /// implement [`Parsable`] for it or specify this parser explicitly when performing parsing or
 /// completion.
 ///
 /// The implementation is similar to [`IntegerParser`] with the only difference being more specific
-/// error handling by the [`IntegerParser`] parser implementation.
+/// error handling by the [`IntegerParser`].
 ///
 /// # Example
 ///
@@ -238,7 +239,7 @@ impl<T: FromStr, Ctx> Parser<Ctx> for FromStrParser<T> {
 
 /// Parser implementation for owned [`String`]s
 ///
-/// This parser consumes exactly one token, does not recognize any attributes and does not yield
+/// This parser consumes exactly one token, does not recognize any attributes, and does not yield
 /// any completion suggestions.
 ///
 /// # Example
@@ -283,7 +284,7 @@ impl<Ctx> Parsable<Ctx> for String {
 /// Parser implementation for [`bool`]ean values
 ///
 /// This parser consumes exactly one token and does not recognize any attributes. At allows the
-/// following input tokens:
+/// following input tokens as only recognized valid input:
 ///
 /// | Parsing result | Recognized tokens       |
 /// |----------------|-------------------------|

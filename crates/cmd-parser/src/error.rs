@@ -1,8 +1,8 @@
 //! Types related to the failure conditions of the parsing process.
 //!
 //! The parsing failure can be indicated by [`ParseError`], [`UnrecognizedToken`], or
-//! [`ParseFailure`]. See [`Parser`](super::Parser) for documentation on when each
-//! of these types should be used.
+//! [`ParseFailure`]. See [`Parser`](super::Parser) for documentation on the relationship between
+//! these types and how each is used in the parsing process
 
 use crate::tokens::{Token, TokenStream, UnbalancedParenthesis};
 use std::borrow::Cow;
@@ -22,10 +22,12 @@ enum ParseErrorVariant<'a> {
 
 /// Unrecoverable parsing error
 ///
-/// This type represent a parsing error that caused by the invalid data. Usually this error is
-/// propagated up the call chain and is returned to the parsing initiator. This error may
-/// optionally contain the name of the type (in the user-readable format) parsing of which has
-/// caused the error.
+/// This type represents a parsing error caused by the invalid data. This error is propagated up
+/// the call chain and most often is returned to the parsing initiator. Creation of this error
+/// usually means that an unrecoverable error has occurred (with few exceptions).
+///
+/// `ParseError` may optionally contain a name of the type (in the user-readable format) parsing
+/// of which has caused the error.
 #[derive(Debug, PartialEq)]
 pub struct ParseError<'a> {
     variant: ParseErrorVariant<'a>,
@@ -33,10 +35,13 @@ pub struct ParseError<'a> {
 }
 
 impl<'a> ParseError<'a> {
-    /// Creates a new error representing a case when a token is unrecognized and the parser cannot
-    /// pass it to the parent parser due to the current value being only partially parsed.
+    /// Creates a new error that represents a situation when the token (either an attribute or a
+    /// text token representing an enum variant) is not recognized by the parser.
     ///
-    /// Calling this method is equivalent to converting [`UnrecognizedToken`] into `ParseError`.
+    /// Note that if the unrecognized token in the first token in the input stream, it should
+    /// return an [`UnrecognizedToken`] instead. If the [`UnrecognizedToken`] is returned by some
+    /// other parser and the current value is already partially parsed, this [`UnrecognizedToken`]
+    /// can be converted into a `ParseError` which would be equivalent to calling this method.
     pub fn unknown(token: Token<'a>) -> Self {
         ParseError {
             variant: ParseErrorVariant::Unknown(token),
@@ -44,8 +49,8 @@ impl<'a> ParseError<'a> {
         }
     }
 
-    /// Creates a new error representing a case when a text token is required but one isn't
-    /// present.
+    /// Creates a new error representing a situation when a token (most often a text token) is
+    /// required by the parser, but the end of a token stream has already been reached.
     pub fn token_required() -> Self {
         ParseError {
             variant: ParseErrorVariant::TokenRequired,
@@ -53,11 +58,11 @@ impl<'a> ParseError<'a> {
         }
     }
 
-    /// Creates a new error representing a punctuation error: a parenthesis is opened or closed
-    /// when one was not expected.
+    /// Creates a new error representing a punctuation error: a situation when parenthesis opened
+    /// or closed unexpectedly.
     ///
     /// Calling this method is equivalent to converting [`UnbalancedParenthesis`] error into
-    /// `ParseError`.
+    /// [`ParseError`].
     pub fn unbalanced_parenthesis() -> Self {
         ParseError {
             variant: ParseErrorVariant::UnbalancedParenthesis,
@@ -65,12 +70,12 @@ impl<'a> ParseError<'a> {
         }
     }
 
-    /// Creates a new error representing a failure to parse a token or multiple tokens. This error
-    /// occurs when the token content is invalid, for example a token contains non-numeric
-    /// characters if the number is required.
+    /// Creates a new error representing a failure to parse the `token`. This error occurs when the
+    /// token's contents are invalid, for example a token contains non-numeric characters if the
+    /// number is expected. Parsers implementation may choose to provide a message describing why
+    /// the parsing has failed, it will be shown when the error is formatted.
     ///
-    /// This function takes a [`Token`] that the parser failed to handle and an optional message
-    /// text.
+    /// This function takes a Token that the parser failed to handle and an optional message text.
     pub fn invalid(token: Token<'a>, message: Option<Cow<'static, str>>) -> Self {
         ParseError {
             variant: ParseErrorVariant::Invalid { token, message },
@@ -78,8 +83,8 @@ impl<'a> ParseError<'a> {
         }
     }
 
-    /// Creates an error with a custom message. No semantics is associated with this error, it can
-    /// be used when neither of the other error types is applicable, for example when performing
+    /// Creates an error with a custom message. No semantics are associated with this error, it can
+    /// be used when neither of other error types is applicable, for example when performing
     /// validation.
     pub fn custom(message: impl Into<Cow<'static, str>>) -> Self {
         ParseError {
@@ -88,11 +93,10 @@ impl<'a> ParseError<'a> {
         }
     }
 
-    /// Attaches an expected type in a human readable format that the parser was trying to handle
-    /// when the error occurred.
+    /// Updates the error and assigns a human-readable name of a type the parser was trying to
+    /// parse when if failed.
     ///
-    /// This value is reflected in the string representation of the `ParseError` generated by the
-    /// [`Display`](std::fmt::Display) trait.
+    /// This value is displayed when `ParseError` is formatted.
     pub fn expected(mut self, expected: impl Into<Cow<'static, str>>) -> Self {
         self.expected = Some(expected.into());
         self
@@ -134,18 +138,17 @@ impl<'a> fmt::Display for ParseError<'a> {
     }
 }
 
-/// Value's failed parsing result
+/// Value’s failed parsing result
 ///
-/// The parsing operation for any value may result in one of three outcomes:
-/// 1. The value was parsed successfully
-/// 2. The parsing failed due to an error. The parsing process cannot recover from this type of a
-///    failure, it terminates immediately
-/// 3. The parser does not recognize the first token: it is either an attribute that the parser
-///    does not recognize (it may still be recognized and handled by the parent parser) or an
-///    unknown enum discriminator.
+/// The parsing process can fail in two different ways:
+///  * The input stream contains invalid tokens: the number, order, or contents of tokens is
+///    incorrect. Such errors are represented by the `ParseError` struct.
+///  * The input may be correct, but the current parser does not recognize the input stream's first
+///    token. In such case, another parser may recognize this token. Such situations arise when
+///    dealing with optional fields, variable number of fields, etc. Such situations are
+///    represented by the `UnexpectedToken` struct.
 ///
-/// The last two outcomes are represented by the `ParseFailure` enum (`Error` and `Unrecognized`
-/// variants respectively).
+/// `ParseFailure` enum's variants encapsulates both these structs.
 #[derive(Debug)]
 pub enum ParseFailure<'a> {
     /// The parsing failed with an unrecoverable error
@@ -167,7 +170,7 @@ impl<'a> ParseFailure<'a> {
     }
 
     /// Returns a reference to the [`UnrecognizedToken`] if this `ParseFailure` corresponds to a
-    /// failure due to an unrecognized tokens or `None` otherwise.
+    /// failure due to an unrecognized token or `None` otherwise.
     pub fn as_unrecognized(&self) -> Option<&UnrecognizedToken<'a>> {
         if let ParseFailure::Unrecognized(unrecognized) = self {
             Some(unrecognized)
@@ -183,10 +186,11 @@ impl<'a, E: Into<ParseError<'a>>> From<E> for ParseFailure<'a> {
     }
 }
 
-/// Parsing failure due to an unrecognized attribute or enum descriminator.
+/// Parsing failure due to an unrecognized attribute or enum discriminator
 ///
-/// This struct consist of the token that was not recognized and a [`TokenStream`] representing the
-/// remaining stream. These values should come from the single call to [`TokenStream::take`].
+/// This struct encapsulates a token that the parser tried to consume but did not recognize, along
+/// with a [`TokenStream`] containing tokens that directly follow this token. In other words, it
+/// should be constructed from both values returned by [`TokenStream::take`].
 #[derive(Debug)]
 pub struct UnrecognizedToken<'a> {
     token: Token<'a>,
