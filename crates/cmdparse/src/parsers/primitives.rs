@@ -39,9 +39,9 @@ macro_rules! no_state_parsable {
 ///
 /// # Example
 /// ```
-/// use cmd_parser::parse;
+/// use cmdparse::parse;
 ///
-/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// # fn main() -> Result<(), cmdparse::error::ParseError<'static>> {
 /// let value = parse::<_, i32>("15", ());
 /// assert_eq!(value, Ok(15));
 ///
@@ -154,8 +154,8 @@ where
 /// [`FromStr`]:
 ///
 /// ```
-/// use cmd_parser::parsers::FromStrParser;
-/// use cmd_parser::{parse, Parsable};
+/// use cmdparse::parsers::FromStrParser;
+/// use cmdparse::{parse, Parsable};
 /// use std::str::FromStr;
 ///
 /// #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -244,9 +244,9 @@ impl<T: FromStr, Ctx> Parser<Ctx> for FromStrParser<T> {
 ///
 /// # Example
 /// ```
-/// use cmd_parser::parse;
+/// use cmdparse::parse;
 ///
-/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// # fn main() -> Result<(), cmdparse::error::ParseError<'static>> {
 /// assert_eq!(parse::<_, String>("token", ())?, "token".to_string());
 /// assert_eq!(
 ///     parse::<_, String>("'multiple words'", ())?,
@@ -293,10 +293,10 @@ impl<Ctx> Parsable<Ctx> for String {
 ///
 /// # Example
 /// ```
-/// use cmd_parser::{complete, parse};
+/// use cmdparse::{complete, parse};
 /// use std::collections::BTreeSet;
 ///
-/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// # fn main() -> Result<(), cmdparse::error::ParseError<'static>> {
 /// assert_eq!(parse::<_, bool>("false", ())?, false);
 /// assert_eq!(complete::<_, bool>("tr", ()), BTreeSet::from(["ue".into()]));
 /// # Ok(())

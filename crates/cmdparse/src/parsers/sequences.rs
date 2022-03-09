@@ -86,9 +86,9 @@ impl_parsable_collection! {BTreeSet<T> where T: Eq + Hash + Ord {
 /// all of them are going to be consumed by the first item's parser:
 ///
 /// ```
-/// use cmd_parser::parse;
+/// use cmdparse::parse;
 ///
-/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// # fn main() -> Result<(), cmdparse::error::ParseError<'static>> {
 /// let result = parse::<_, Vec<Vec<i32>>>("1 2 3 4 5", ())?;
 /// assert_eq!(result, vec![vec![1, 2, 3, 4, 5]]);
 /// # Ok(())
@@ -99,8 +99,8 @@ impl_parsable_collection! {BTreeSet<T> where T: Eq + Hash + Ord {
 /// with parenthesis:
 ///
 /// ```
-/// # use cmd_parser::parse;
-/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// # use cmdparse::parse;
+/// # fn main() -> Result<(), cmdparse::error::ParseError<'static>> {
 /// let result = parse::<_, Vec<Vec<i32>>>("(1 2 3) (4 5)", ())?;
 /// assert_eq!(result, vec![vec![1, 2, 3], vec![4, 5]]);
 /// # Ok(())
@@ -109,15 +109,15 @@ impl_parsable_collection! {BTreeSet<T> where T: Eq + Hash + Ord {
 ///
 /// # Custom collections
 ///
-/// `cmd_parser` implements Parsable using CollectionParser as a default parser for collections from
+/// `cmdparse` implements Parsable using CollectionParser as a default parser for collections from
 /// the Rust’s standard library: [`Vec`], [`VecDeque`], [`LinkedList`], [`HashSet`], [`BTreeSet`].
 ///
 /// It is easy to extend this list with a custom collection. To do so, one need to implement
 /// [`Default`], [`ParsableCollection`], and [`Parsable`] traits.
 ///
 /// ```
-/// use cmd_parser::parsers::{CollectionParser, ParsableCollection};
-/// use cmd_parser::{parse, Parsable};
+/// use cmdparse::parsers::{CollectionParser, ParsableCollection};
+/// use cmdparse::{parse, Parsable};
 ///
 /// #[derive(Default, Debug, PartialEq, Eq)]
 /// struct MyBitArray(u128);
@@ -134,7 +134,7 @@ impl_parsable_collection! {BTreeSet<T> where T: Eq + Hash + Ord {
 ///     type Parser = CollectionParser<Self, <bool as Parsable<Ctx>>::Parser>;
 /// }
 ///
-/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// # fn main() -> Result<(), cmdparse::error::ParseError<'static>> {
 /// let result = parse::<_, MyBitArray>("true false false true true", ())?;
 /// assert_eq!(result, MyBitArray(0b10011));
 /// # Ok(())
@@ -265,9 +265,9 @@ impl<Ctx, T> Parsable<Ctx> for PhantomData<T> {
 ///
 /// # Examples
 /// ```
-/// use cmd_parser::parse;
+/// use cmdparse::parse;
 ///
-/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// # fn main() -> Result<(), cmdparse::error::ParseError<'static>> {
 /// let value = parse::<_, (u8, i32, bool)>("10 42 false", ())?;
 /// assert_eq!(value, (10, 42, false));
 /// # Ok(())
@@ -452,9 +452,9 @@ pub trait ParsableTransformation<O> {
 /// default parser implementation (without using derive macro):
 ///
 /// ```
-/// use cmd_parser::{Parsable, parse};
-/// use cmd_parser::error::ParseError;
-/// use cmd_parser::parsers::{TransformParser, ParsableTransformation};
+/// use cmdparse::{Parsable, parse};
+/// use cmdparse::error::ParseError;
+/// use cmdparse::parsers::{TransformParser, ParsableTransformation};
 ///
 /// #[derive(Debug, PartialEq, Eq)]
 /// struct PostId(usize);
@@ -471,7 +471,7 @@ pub trait ParsableTransformation<O> {
 ///     type Parser = TransformParser<<usize as Parsable<Ctx>>::Parser, PostId, PostId>;
 /// }
 ///
-/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// # fn main() -> Result<(), cmdparse::error::ParseError<'static>> {
 /// let value = parse::<_, PostId>("42", ())?;
 /// assert_eq!(value, PostId(42));
 /// # Ok(())
@@ -483,12 +483,12 @@ pub trait ParsableTransformation<O> {
 /// functionally equivalent to the one above:
 ///
 /// ```
-/// # use cmd_parser::{Parsable, parse};
+/// # use cmdparse::{Parsable, parse};
 /// #
 /// #[derive(Debug, PartialEq, Eq, Parsable)]
 /// struct PostId(usize);
 ///
-/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// # fn main() -> Result<(), cmdparse::error::ParseError<'static>> {
 /// let value = parse::<_, PostId>("42", ())?;
 /// assert_eq!(value, PostId(42));
 /// # Ok(())
@@ -501,9 +501,9 @@ pub trait ParsableTransformation<O> {
 /// transformations for the same type, which is useful for data validation:
 ///
 /// ```
-/// use cmd_parser::{Parsable, parse_parser};
-/// use cmd_parser::error::ParseError;
-/// use cmd_parser::parsers::{TransformParser, ParsableTransformation};
+/// use cmdparse::{Parsable, parse_parser};
+/// use cmdparse::error::ParseError;
+/// use cmdparse::parsers::{TransformParser, ParsableTransformation};
 ///
 /// struct IsPowerOfTwo;
 ///

@@ -1,6 +1,6 @@
 //! Splitting the input stream into a sequence of tokens
 //!
-//! `cmd_parser`’s parsers do not work on the input string directly. Instead, they operate on the
+//! `cmdparse`’s parsers do not work on the input string directly. Instead, they operate on the
 //! token stream — an iterator-like sequence of tokens, each representing a text payload or an
 //! attribute name (a token with preceding `--`). Token stream does not include whitespaces or
 //! comments (substrings beginning from the first octothorp (`#`) in the input). A token may
@@ -11,7 +11,7 @@
 //! parsed into:
 //!
 //! ```
-//! # use cmd_parser::tokens::{TokenStream, Token, RawLexeme, UnbalancedParenthesis};
+//! # use cmdparse::tokens::{TokenStream, Token, RawLexeme, UnbalancedParenthesis};
 //! #
 //! # fn main() -> Result<(), UnbalancedParenthesis> {
 //! let input = r#"send-message --to user@example.com --subject "Hello, \"world\"" # sending an email"#;
@@ -44,7 +44,7 @@
 //!  * The contents of the token is a [`RawLexeme`] &mdash; a thin wrapper around an input slice.
 //!    Each [`RawLexeme`] can be parsed into the intended representation:
 //! ```
-//! # use cmd_parser::tokens::RawLexeme;
+//! # use cmdparse::tokens::RawLexeme;
 //! let lexeme = RawLexeme::new(r#""Hello, \"world\"""#);
 //! assert_eq!(&lexeme.parse_string(), r#"Hello, "world""#);
 //! ```
@@ -199,7 +199,7 @@ pub struct UnbalancedParenthesis;
 /// # Example
 ///
 /// ```
-/// use cmd_parser::tokens::complete_variants;
+/// use cmdparse::tokens::complete_variants;
 ///
 /// // Note that VARIANTS is sorted
 /// const VARIANTS: &[&str] = &["fifth", "first", "fourth", "second", "third"];

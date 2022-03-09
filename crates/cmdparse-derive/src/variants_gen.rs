@@ -48,7 +48,7 @@ impl<'a> TransparentVariantView<'a> {
         quote! {
             match (||{ #parse_variant })() {
                 Ok(result) => return Ok(result),
-                Err(::cmd_parser::error::ParseFailure::Unrecognized(_)) => {},
+                Err(::cmdparse::error::ParseFailure::Unrecognized(_)) => {},
                 #error_handle
             }
         }
@@ -80,18 +80,18 @@ pub(crate) fn gen_parse_enum(
 
     quote! {
         match input.take() {
-            None => Err(::cmd_parser::error::ParseError::token_required().expected("variant").into()),
+            None => Err(::cmdparse::error::ParseError::token_required().expected("variant").into()),
             Some(Err(err)) => Err(err.into()),
-            Some(Ok((token @ ::cmd_parser::tokens::Token::Attribute(_), remaining))) => {
-                Err(::cmd_parser::error::UnrecognizedToken::new(token, remaining).into())
+            Some(Ok((token @ ::cmdparse::tokens::Token::Attribute(_), remaining))) => {
+                Err(::cmdparse::error::UnrecognizedToken::new(token, remaining).into())
             }
-            Some(Ok((token @ ::cmd_parser::tokens::Token::Text(text) , remaining))) => {
+            Some(Ok((token @ ::cmdparse::tokens::Token::Text(text) , remaining))) => {
                 let text = text.parse_string();
                 match ::std::borrow::Borrow::<str>::borrow(&text) {
                     #(#variants_parsing)*
                    _ => {
                         #(#transparent_parsed)*
-                        Err(::cmd_parser::error::UnrecognizedToken::new(token, remaining).into())
+                        Err(::cmdparse::error::UnrecognizedToken::new(token, remaining).into())
                     }
                 }
             }
@@ -120,11 +120,11 @@ pub(crate) fn gen_complete_enum(
         const VARIANT_NAMES: &[&str] = &[#(#variant_names),*];
         let mut suggestions = ::std::collections::BTreeSet::new();
         match input.take() {
-            None | Some(Err(_)) => return ::cmd_parser::CompletionResult::new_final(false),
-            Some(Ok((::cmd_parser::tokens::Token::Text(text), remaining))) => {
+            None | Some(Err(_)) => return ::cmdparse::CompletionResult::new_final(false),
+            Some(Ok((::cmdparse::tokens::Token::Text(text), remaining))) => {
                 let text = text.parse_string();
                 if remaining.is_all_consumed() {
-                    suggestions.extend(::cmd_parser::tokens::complete_variants(&text, VARIANT_NAMES).map(::std::borrow::Cow::Borrowed));
+                    suggestions.extend(::cmdparse::tokens::complete_variants(&text, VARIANT_NAMES).map(::std::borrow::Cow::Borrowed));
                 } else {
                     match ::std::borrow::Borrow::<str>::borrow(&text) {
                         #variants_complete
@@ -135,6 +135,6 @@ pub(crate) fn gen_complete_enum(
             Some(_) => {}
         }
         #(#transparent_complete)*
-        ::cmd_parser::CompletionResult::new(input, false).add_suggestions(suggestions)
+        ::cmdparse::CompletionResult::new(input, false).add_suggestions(suggestions)
     }
 }

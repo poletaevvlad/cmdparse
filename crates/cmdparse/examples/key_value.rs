@@ -1,6 +1,6 @@
-use cmd_parser::error::{ParseError, UnrecognizedToken};
-use cmd_parser::tokens::{Token, TokenStream};
-use cmd_parser::{complete_parser, parse, CompletionResult, Parsable, ParseResult, Parser};
+use cmdparse::error::{ParseError, UnrecognizedToken};
+use cmdparse::tokens::{Token, TokenStream};
+use cmdparse::{complete_parser, parse, CompletionResult, Parsable, ParseResult, Parser};
 use rustyline::error::ReadlineError;
 use std::collections::HashMap;
 

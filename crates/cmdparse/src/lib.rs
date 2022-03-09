@@ -1,4 +1,4 @@
-//! `cmd_parser` is, as the name suggests, parses user commands into arbitrary Rust types.
+//! `cmdparse` is, as the name suggests, parses user commands into arbitrary Rust types.
 //!
 //! Generally, this crate can be viewed as a data deserialization framework. It defines a syntax
 //! designed to be easy to entered interactively and includes utilities for transforming the input
@@ -8,7 +8,7 @@
 //! It is not suitable for parsing command line arguments, even though the syntax it supports is
 //! fairly similar to what those would look like. Instead, it was designed to be used for parsing
 //! commands entered interactively inside the application. Of course, you are not limited to this
-//! use case and free to use `cmd_parser` as a generic data deserialization framework in any way
+//! use case and free to use `cmdparse` as a generic data deserialization framework in any way
 //! you like.
 //!
 //! # Example
@@ -17,7 +17,7 @@
 //! [`Parsable`] trait for it. This is enough to be able to parse it.
 //!
 //! ```
-//! use cmd_parser::{Parsable, parse};
+//! use cmdparse::{Parsable, parse};
 //!
 //! #[derive(Debug, PartialEq, Eq, Parsable)]
 //! struct MailSendCommand {
@@ -28,7 +28,7 @@
 //!    to: Vec<String>,
 //! }
 //!
-//! # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+//! # fn main() -> Result<(), cmdparse::error::ParseError<'static>> {
 //! let input = "\"Hello, world\" --to user1@example.com user2@example.com --subject Greeting";
 //! let result = parse::<_, MailSendCommand>(input, ())?;
 //! assert_eq!(result, MailSendCommand {
@@ -40,7 +40,7 @@
 //! # }
 //! ```
 //!
-//! This example demonstrates several features of `cmd_parser`:
+//! This example demonstrates several features of `cmdparse`:
 //!
 //!  * Parsing functionality can be automatically derived for an arbitrary struct or enum as long
 //!    as the inner types are [`Parsable`] or there is an appropriate [`Parser`] for them. (To
@@ -51,14 +51,14 @@
 //!    defaults to an empty vector, as per its [`Default`] implementation)
 //!  * Parsable values can contain nested parsable values: `MailSendCommand` is parsable, it
 //!    contains a [`Vec`] which is parsable and in repeatedly parses [`String`]s that are parsable.
-//!    Note how `cmd_parser` recognized that the list of email addresses finished when it
+//!    Note how `cmdparse` recognized that the list of email addresses finished when it
 //!    encountered the attribute that neither [`String`] nor [`Vec`] recognizes.
 //!
-//! `cmd_parser` can generate completion suggestions:
+//! `cmdparse` can generate completion suggestions:
 //!
 //! ```
-//! # use cmd_parser::{Parsable, parse};
-//! use cmd_parser::complete;
+//! # use cmdparse::{Parsable, parse};
+//! use cmdparse::complete;
 //! use std::collections::BTreeSet;
 //!
 //! # #[derive(Debug, PartialEq, Eq, Parsable)]
@@ -70,7 +70,7 @@
 //! #    to: Vec<String>,
 //! # }
 //! #
-//! # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+//! # fn main() -> Result<(), cmdparse::error::ParseError<'static>> {
 //! let suggestions = complete::<_, MailSendCommand>("\"Hello, world\" --", ());
 //! assert_eq!(suggestions, BTreeSet::from(["to".into(), "subject".into()]));
 //! # Ok(())
@@ -81,7 +81,7 @@
 //! converted into kebab-case by the [`Parsable`] derive macro):
 //!
 //! ```
-//! use cmd_parser::{parse, Parsable};
+//! use cmdparse::{parse, Parsable};
 //!
 //! #[derive(Debug, PartialEq, Eq, Parsable)]
 //! enum Priority {
@@ -102,7 +102,7 @@
 //!     Remove(usize),
 //! }
 //!
-//! # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+//! # fn main() -> Result<(), cmdparse::error::ParseError<'static>> {
 //! assert_eq!(
 //!     parse::<_, Command>("add-task parse-all-commands", ())?,
 //!     Command::AddTask("parse-all-commands".to_string(), Priority::Medium),
@@ -118,10 +118,10 @@
 //!
 //! # Syntax
 //!
-//! The syntax that `cmd_parser` supports is fairly minimal. The parsing machinery sees the input as
+//! The syntax that `cmdparse` supports is fairly minimal. The parsing machinery sees the input as
 //! a sequence of tokens. Token is any sequence of characters separated by whitespaces. If you wish
 //! to include a whitespace in the token, you may enclose any substring of the input into a pair of
-//! quotation marks (either double or singular); `cmd_parser` supports escaping these symbols
+//! quotation marks (either double or singular); `cmdparse` supports escaping these symbols
 //! inside quoted tokens with a slash (`\`).
 //!
 //! Input can contain a comment beginning with an octothorp (`#`). Octothorps within quoted tokens
@@ -132,7 +132,7 @@
 //! handles attributes in any order and at arbitrary positions.
 //!
 //! Due to the nature of the commands' syntax, parsing can seem ambiguous. For example,
-//! `cmd_parser` can parse nested structs such as `Vec<Vec<u32>>`. It may be confusing to the end
+//! `cmdparse` can parse nested structs such as `Vec<Vec<u32>>`. It may be confusing to the end
 //! user, how would a sequence of numbers be interpreted (they all will be put in the only item of
 //! the outer vector). It is best to design your command to be simple and avoid highly nested
 //! structures for the better user experience. In some cases, complexity is unavoidable. In such
@@ -148,7 +148,7 @@ pub mod testing;
 pub mod tokens;
 
 #[doc(hidden)]
-pub use cmd_parser_derive::Parsable;
+pub use cmdparse_derive::Parsable;
 use error::ParseError;
 use error::ParseFailure;
 use std::borrow::Cow;
@@ -238,7 +238,7 @@ impl<'a> CompletionResult<'a> {
 
 /// Definition of the parsing and completion algorithm for some type
 ///
-/// This trait is fundamental for the functionality of `cmd_parser`. The implementers must define
+/// This trait is fundamental for the functionality of `cmdparse`. The implementers must define
 /// two operations: parsing (converting the input [`TokenStream`] into a value of a target type)
 /// and completion (generating the set of possible completions for the last meaningful token in the
 /// input stream).
@@ -263,9 +263,9 @@ impl<'a> CompletionResult<'a> {
 /// dependent on data available at runtime.
 ///
 /// ```
-/// use cmd_parser::{Parser, CompletionResult, ParseResult, parse_parser, complete_parser};
-/// use cmd_parser::tokens::{TokenStream, Token};
-/// use cmd_parser::error::{ParseError, UnrecognizedToken};
+/// use cmdparse::{Parser, CompletionResult, ParseResult, parse_parser, complete_parser};
+/// use cmdparse::tokens::{TokenStream, Token};
+/// use cmdparse::error::{ParseError, UnrecognizedToken};
 /// use std::borrow::Cow;
 /// use std::collections::{BTreeSet, HashMap};
 ///
@@ -410,7 +410,7 @@ pub trait Parser<Ctx>: Default {
 /// parsing context and restricting the context type in the derived trait implementation.
 ///
 /// ```
-/// use cmd_parser::{parse, tokens::TokenStream, CompletionResult, Parsable, Parser, ParseResult};
+/// use cmdparse::{parse, tokens::TokenStream, CompletionResult, Parsable, Parser, ParseResult};
 ///
 /// #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 /// enum LengthUnit { Cm, In }
@@ -453,7 +453,7 @@ pub trait Parser<Ctx>: Default {
 ///     width: Length,
 /// }
 ///
-/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// # fn main() -> Result<(), cmdparse::error::ParseError<'static>> {
 /// assert_eq!(
 ///     parse::<_, Size>("10 20", ParsingContext{ unit: LengthUnit::Cm })?,
 ///     Size {
@@ -480,9 +480,9 @@ pub trait Parser<Ctx>: Default {
 /// The following example demonstrates how to use `TransformParser` for data validation.
 ///
 /// ```
-/// use cmd_parser::parsers::{TransformParser, ParsableTransformation};
-/// use cmd_parser::error::ParseError;
-/// use cmd_parser::Parsable;
+/// use cmdparse::parsers::{TransformParser, ParsableTransformation};
+/// use cmdparse::error::ParseError;
+/// use cmdparse::Parsable;
 ///
 /// struct Number01RangeValidator;
 ///
@@ -512,12 +512,12 @@ pub trait Parser<Ctx>: Default {
 /// specified) or a specific value (specified after `=` sign).
 ///
 /// ```
-/// use cmd_parser::{Parsable, parse};
+/// use cmdparse::{Parsable, parse};
 ///
 /// #[derive(Debug, PartialEq, Eq, Parsable)]
 /// struct MyStruct(#[cmd(default)] u8, #[cmd(default = "5")] u8, u8);
 ///
-/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// # fn main() -> Result<(), cmdparse::error::ParseError<'static>> {
 /// assert_eq!(parse::<_, MyStruct>("24", ())?, MyStruct(0, 5, 24));
 /// # Ok(())
 /// # }
@@ -531,7 +531,7 @@ pub trait Parser<Ctx>: Default {
 /// field value’s tokens.
 ///
 /// ```
-/// use cmd_parser::{Parsable, parse};
+/// use cmdparse::{Parsable, parse};
 ///
 /// #[derive(Debug, PartialEq, Eq, Parsable)]
 /// enum Color{ Red, Green, Blue }
@@ -548,7 +548,7 @@ pub trait Parser<Ctx>: Default {
 ///     #[cmd(attr(color))] color: Color,
 /// }
 ///
-/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// # fn main() -> Result<(), cmdparse::error::ParseError<'static>> {
 /// assert_eq!(
 ///     parse::<_, MyStruct>("--important", ())?,
 ///     MyStruct { color: Color::Green, is_important: true },
@@ -568,12 +568,12 @@ pub trait Parser<Ctx>: Default {
 /// using `default` attribute.
 ///
 /// ```
-/// use cmd_parser::{Parsable, parse};
+/// use cmdparse::{Parsable, parse};
 ///
 /// #[derive(Debug, PartialEq, Eq, Parsable)]
 /// struct MyStruct(#[cmd(default = "5", attr(value))] u8);
 ///
-/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// # fn main() -> Result<(), cmdparse::error::ParseError<'static>> {
 /// assert_eq!(parse::<_, MyStruct>("--value 10", ())?, MyStruct(10));
 /// assert_eq!(parse::<_, MyStruct>("", ())?, MyStruct(5));
 /// # Ok(())
@@ -588,7 +588,7 @@ pub trait Parser<Ctx>: Default {
 /// attribute.
 ///
 /// ```
-/// use cmd_parser::{Parsable, parse};
+/// use cmdparse::{Parsable, parse};
 ///
 /// #[derive(Debug, PartialEq, Eq, Parsable)]
 /// enum MyEnum {
@@ -601,7 +601,7 @@ pub trait Parser<Ctx>: Default {
 ///     )
 /// }
 ///
-/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// # fn main() -> Result<(), cmdparse::error::ParseError<'static>> {
 /// assert_eq!(parse::<_, MyEnum>("enable", ())?, MyEnum::SetEnabled(true));
 /// assert_eq!(parse::<_, MyEnum>("disable", ())?, MyEnum::SetEnabled(false));
 /// # Ok(())
@@ -610,7 +610,7 @@ pub trait Parser<Ctx>: Default {
 ///
 /// ## Enum variant attributes
 ///
-/// These attributes are applicable to enum variants. Generally, `cmd_parser` expects a
+/// These attributes are applicable to enum variants. Generally, `cmdparse` expects a
 /// discriminator—the variant’s name in kebab-case followed by tokens for its fields if any exist.
 ///
 /// ### `rename = "name"`
@@ -619,7 +619,7 @@ pub trait Parser<Ctx>: Default {
 /// original name.
 ///
 /// ```
-/// use cmd_parser::{Parsable, parse};
+/// use cmdparse::{Parsable, parse};
 ///
 /// #[derive(Debug, PartialEq, Eq, Parsable)]
 /// enum MyEnum {
@@ -627,7 +627,7 @@ pub trait Parser<Ctx>: Default {
 ///     #[cmd(rename = "second")] Two,
 /// }
 ///
-/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// # fn main() -> Result<(), cmdparse::error::ParseError<'static>> {
 /// assert_eq!(parse::<_, MyEnum>("first", ())?, MyEnum::One);
 /// assert!(parse::<_, MyEnum>("one", ()).is_err());
 /// # Ok(())
@@ -641,7 +641,7 @@ pub trait Parser<Ctx>: Default {
 /// variant’s original name.
 ///
 /// ```
-/// use cmd_parser::{Parsable, parse};
+/// use cmdparse::{Parsable, parse};
 ///
 /// #[derive(Debug, PartialEq, Eq, Parsable)]
 /// enum Color {
@@ -650,7 +650,7 @@ pub trait Parser<Ctx>: Default {
 ///     #[cmd(alias = "grey")] Gray,
 /// }
 ///
-/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// # fn main() -> Result<(), cmdparse::error::ParseError<'static>> {
 /// assert_eq!(parse::<_, Color>("grey", ())?, Color::Gray);
 /// assert_eq!(parse::<_, Color>("gray", ())?, Color::Gray);
 /// # Ok(())
@@ -663,7 +663,7 @@ pub trait Parser<Ctx>: Default {
 /// variant.
 ///
 /// ```
-/// use cmd_parser::{Parsable, parse};
+/// use cmdparse::{Parsable, parse};
 ///
 /// #[derive(Debug, PartialEq, Eq, Parsable)]
 /// enum MyEnum {
@@ -671,7 +671,7 @@ pub trait Parser<Ctx>: Default {
 ///     #[cmd(ignore)] NonInteractive,
 /// }
 ///
-/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// # fn main() -> Result<(), cmdparse::error::ParseError<'static>> {
 /// assert!(parse::<_, MyEnum>("non-interactive", ()).is_err());
 /// # Ok(())
 /// # }
@@ -683,7 +683,7 @@ pub trait Parser<Ctx>: Default {
 /// a large enum into several smaller ones is desirable.
 ///
 /// ```
-/// use cmd_parser::{Parsable, parse};
+/// use cmdparse::{Parsable, parse};
 ///
 /// #[derive(Debug, PartialEq, Eq, Parsable)]
 /// enum Subcommand { First, Second }
@@ -695,7 +695,7 @@ pub trait Parser<Ctx>: Default {
 ///     Third,
 /// }
 ///
-/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// # fn main() -> Result<(), cmdparse::error::ParseError<'static>> {
 /// assert_eq!(parse::<_, Command>("first", ())?, Command::Subcommand(Subcommand::First));
 /// assert_eq!(parse::<_, Command>("third", ())?, Command::Third);
 /// # Ok(())
@@ -708,7 +708,7 @@ pub trait Parser<Ctx>: Default {
 /// when the first field of this variant is not an enum.
 ///
 /// ```
-/// use cmd_parser::{Parsable, parse};
+/// use cmdparse::{Parsable, parse};
 ///
 /// #[derive(Debug, PartialEq,Parsable)]
 /// enum Value {
@@ -717,7 +717,7 @@ pub trait Parser<Ctx>: Default {
 ///     #[cmd(transparent_no_error)] Boolean(bool),
 /// }
 ///
-/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// # fn main() -> Result<(), cmdparse::error::ParseError<'static>> {
 /// assert_eq!(parse::<_, Value>("0.4", ())?, Value::Real(0.4));
 /// assert_eq!(parse::<_, Value>("12", ())?, Value::Integer(12));
 /// assert_eq!(parse::<_, Value>("true", ())?, Value::Boolean(true));
@@ -726,7 +726,7 @@ pub trait Parser<Ctx>: Default {
 /// ```
 ///
 /// Note that in the example above, the orders in which the enum variants are declared matters:
-/// `cmd_parser` tries to parse transparent variants in order in which they are declared and
+/// `cmdparse` tries to parse transparent variants in order in which they are declared and
 /// returns the first successfully parsed result.
 pub trait Parsable<Ctx> {
     /// The parser type for this type
@@ -746,11 +746,11 @@ pub trait Parsable<Ctx> {
 /// # Example:
 ///
 /// ```
-/// use cmd_parser::parse_parser;
-/// use cmd_parser::parsers::{IntegerParser, StringParser, tuples::TupleParser2};
+/// use cmdparse::parse_parser;
+/// use cmdparse::parsers::{IntegerParser, StringParser, tuples::TupleParser2};
 ///
 /// type ExplicitParser = TupleParser2<IntegerParser<u64>, StringParser>;
-/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// # fn main() -> Result<(), cmdparse::error::ParseError<'static>> {
 /// let value = parse_parser::<_, ExplicitParser>("42 fourty-two", ())?;
 /// assert_eq!(value, (42, "fourty-two".to_string()));
 /// # Ok(())
@@ -778,9 +778,9 @@ pub fn parse_parser<Ctx, P: Parser<Ctx>>(input: &str, ctx: Ctx) -> Result<P::Val
 /// # Example:
 ///
 /// ```
-/// use cmd_parser::parse;
+/// use cmdparse::parse;
 ///
-/// # fn main() -> Result<(), cmd_parser::error::ParseError<'static>> {
+/// # fn main() -> Result<(), cmdparse::error::ParseError<'static>> {
 /// let value: (u64, String) = parse("42 fourty-two", ())?;
 /// assert_eq!(value, (42, "fourty-two".to_string()));
 /// # Ok(())
@@ -801,8 +801,8 @@ pub fn parse<Ctx, T: Parsable<Ctx>>(input: &str, ctx: Ctx) -> Result<T, ParseErr
 /// # Examples
 ///
 /// ```
-/// use cmd_parser::complete_parser;
-/// use cmd_parser::parsers::BooleanParser;
+/// use cmdparse::complete_parser;
+/// use cmdparse::parsers::BooleanParser;
 /// use std::collections::BTreeSet;
 ///
 /// let suggestions = complete_parser::<_, BooleanParser>("tr", ());
@@ -821,7 +821,7 @@ pub fn complete_parser<Ctx, P: Parser<Ctx>>(input: &str, ctx: Ctx) -> BTreeSet<C
 /// # Examples
 ///
 /// ```
-/// use cmd_parser::complete;
+/// use cmdparse::complete;
 /// use std::collections::BTreeSet;
 ///
 /// let suggestions = complete::<_, bool>("tr", ());

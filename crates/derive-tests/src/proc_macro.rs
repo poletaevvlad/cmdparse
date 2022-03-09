@@ -1,6 +1,6 @@
-use cmd_parser::error::ParseError;
-use cmd_parser::testing::{test_complete, test_parse, token};
-use cmd_parser::Parsable;
+use cmdparse::error::ParseError;
+use cmdparse::testing::{test_complete, test_parse, token};
+use cmdparse::Parsable;
 
 mod unit_struct {
     use super::*;
@@ -115,7 +115,7 @@ mod multiple_args {
 
 mod custom_ctx {
     use super::*;
-    use cmd_parser::{tokens::TokenStream, ParseResult, Parser};
+    use cmdparse::{tokens::TokenStream, ParseResult, Parser};
 
     #[derive(Default)]
     struct MyParser;
@@ -128,11 +128,7 @@ mod custom_ctx {
             Ok((value * ctx, remaining))
         }
 
-        fn complete<'a>(
-            &self,
-            input: TokenStream<'a>,
-            ctx: u8,
-        ) -> cmd_parser::CompletionResult<'a> {
+        fn complete<'a>(&self, input: TokenStream<'a>, ctx: u8) -> cmdparse::CompletionResult<'a> {
             <u8 as Parsable<u8>>::Parser::default().complete(input, ctx)
         }
     }
@@ -154,7 +150,7 @@ mod custom_ctx {
 
 mod custom_ctx_bounds {
     use super::*;
-    use cmd_parser::{tokens::TokenStream, ParseResult, Parser};
+    use cmdparse::{tokens::TokenStream, ParseResult, Parser};
 
     trait CustomCtx {
         fn get_multiplier(&self) -> u8;
@@ -174,11 +170,7 @@ mod custom_ctx_bounds {
             Ok((value * multiplier, remaining))
         }
 
-        fn complete<'a>(
-            &self,
-            input: TokenStream<'a>,
-            ctx: Ctx,
-        ) -> cmd_parser::CompletionResult<'a> {
+        fn complete<'a>(&self, input: TokenStream<'a>, ctx: Ctx) -> cmdparse::CompletionResult<'a> {
             <u8 as Parsable<Ctx>>::Parser::default().complete(input, ctx)
         }
     }

@@ -33,7 +33,7 @@ impl<'a> FieldView<'a> {
                 let parse_ctx = ctx.parse_context_ident();
 
                 quote! {
-                    #position => match input.with_nested(|input| ::cmd_parser::Parser::<#parse_ctx>::parse(&#parser_ident, input, ctx.clone())) {
+                    #position => match input.with_nested(|input| ::cmdparse::Parser::<#parse_ctx>::parse(&#parser_ident, input, ctx.clone())) {
                         Ok((result, remaining)) => {
                             input = remaining;
                             #var_ident = Some(result);
@@ -41,8 +41,8 @@ impl<'a> FieldView<'a> {
                             required_index += 1;
                             continue
                         }
-                        Err(error @ ::cmd_parser::error::ParseFailure::Error(_)) => return Err(error),
-                        Err(::cmd_parser::error::ParseFailure::Unrecognized(unrecognized)) => #unrecognized_variant,
+                        Err(error @ ::cmdparse::error::ParseFailure::Error(_)) => return Err(error),
+                        Err(::cmdparse::error::ParseFailure::Unrecognized(unrecognized)) => #unrecognized_variant,
                     }
                 }
             }
@@ -61,7 +61,7 @@ impl<'a> FieldView<'a> {
                 quote! {
                     #position => {
                         let result = input.complete_nested(|input| {
-                            ::cmd_parser::Parser::<#parse_ctx>::complete(&#parser_ident, input, ctx.clone())
+                            ::cmdparse::Parser::<#parse_ctx>::complete(&#parser_ident, input, ctx.clone())
                         });
                         match result.remaining {
                             Some(remaining) => input = remaining,
@@ -92,7 +92,7 @@ impl<'a> FieldView<'a> {
                 quote! {
                     #name => {
                         let (result, remaining) = unexpected.remaining().with_nested(|input| {
-                            ::cmd_parser::Parser::<#parse_ctx>::parse(&#parser_ident, input, ctx.clone())
+                            ::cmdparse::Parser::<#parse_ctx>::parse(&#parser_ident, input, ctx.clone())
                         })?;
                         input = remaining;
                         #var_ident = Some(result);
@@ -120,7 +120,7 @@ impl<'a> FieldView<'a> {
                 quote! {
                     #name => {
                         let result = remaining.complete_nested(|input| {
-                            ::cmd_parser::Parser::<#parse_ctx>::complete(&#parser_ident, input, ctx.clone())
+                            ::cmdparse::Parser::<#parse_ctx>::complete(&#parser_ident, input, ctx.clone())
                         });
                         match result.remaining {
                             Some(remaining) => input = remaining,
@@ -131,7 +131,7 @@ impl<'a> FieldView<'a> {
                             suggestions.extend(result.suggestions);
                             continue
                         } else {
-                            return ::cmd_parser::CompletionResult::new_final(false)
+                            return ::cmdparse::CompletionResult::new_final(false)
                                 .add_suggestions(result.suggestions)
                                 .add_suggestions(suggestions);
                         }
@@ -225,13 +225,13 @@ pub(crate) fn gen_parse_struct(
                 #required_parsing
                 _ => match input.take() {
                     None | Some(Err(_)) => break,
-                    Some(Ok((::cmd_parser::tokens::Token::Text(_), _))) => break,
-                    Some(Ok((token, remaining))) => ::cmd_parser::error::UnrecognizedToken::new(token, remaining),
+                    Some(Ok((::cmdparse::tokens::Token::Text(_), _))) => break,
+                    Some(Ok((token, remaining))) => ::cmdparse::error::UnrecognizedToken::new(token, remaining),
                 }
             };
             match unexpected.token() {
-                ::cmd_parser::tokens::Token::Text(_) => return Err(unexpected.into()),
-                ::cmd_parser::tokens::Token::Attribute(attribute) => {
+                ::cmdparse::tokens::Token::Text(_) => return Err(unexpected.into()),
+                ::cmdparse::tokens::Token::Attribute(attribute) => {
                     let attribute = attribute.parse_string();
                     match ::std::borrow::Borrow::<str>::borrow(&attribute) {
                         #optional_parsing
@@ -286,36 +286,36 @@ pub(crate) fn gen_complete_struct(
             }
 
             let mut result = match input.take() {
-                None if required_index >= #required_count => ::cmd_parser::CompletionResult::new(input, true),
-                None | Some(Err(_)) => ::cmd_parser::CompletionResult::new_final(false),
+                None if required_index >= #required_count => ::cmdparse::CompletionResult::new(input, true),
+                None | Some(Err(_)) => ::cmdparse::CompletionResult::new_final(false),
                 Some(Ok((token, remaining))) => {
                     match token {
-                        ::cmd_parser::tokens::Token::Text(_) if required_index >= #required_count => {
-                            ::cmd_parser::CompletionResult::new(input, true)
+                        ::cmdparse::tokens::Token::Text(_) if required_index >= #required_count => {
+                            ::cmdparse::CompletionResult::new(input, true)
                         }
-                        ::cmd_parser::tokens::Token::Text(_) => ::cmd_parser::CompletionResult::new_final(false),
+                        ::cmdparse::tokens::Token::Text(_) => ::cmdparse::CompletionResult::new_final(false),
 
-                        ::cmd_parser::tokens::Token::Attribute(attribute) if remaining.is_all_consumed() => {
+                        ::cmdparse::tokens::Token::Attribute(attribute) if remaining.is_all_consumed() => {
                             let text = attribute.parse_string();
                             suggestions.extend(
-                                ::cmd_parser::tokens::complete_variants(&text, ATTRIBUTE_NAMES)
+                                ::cmdparse::tokens::complete_variants(&text, ATTRIBUTE_NAMES)
                                     .map(::std::borrow::Cow::Borrowed)
                             );
 
                             let consumed = !first_token || #required_count == 0;
                             if first_token || required_index >= #required_count {
-                                ::cmd_parser::CompletionResult::new(input, consumed)
+                                ::cmdparse::CompletionResult::new(input, consumed)
                             } else {
-                                ::cmd_parser::CompletionResult::new_final(consumed)
+                                ::cmdparse::CompletionResult::new_final(consumed)
                             }
                         }
-                        ::cmd_parser::tokens::Token::Attribute(attribute) => {
+                        ::cmdparse::tokens::Token::Attribute(attribute) => {
                             let text = attribute.parse_string();
                             match ::std::borrow::Borrow::<str>::borrow(&text) {
                                 #optional_complete
-                                _ if required_index >= #required_count => ::cmd_parser::CompletionResult::new(input, true),
-                                _ if first_token => ::cmd_parser::CompletionResult::new(input, false),
-                                _ => ::cmd_parser::CompletionResult::new_final(false),
+                                _ if required_index >= #required_count => ::cmdparse::CompletionResult::new(input, true),
+                                _ if first_token => ::cmdparse::CompletionResult::new(input, false),
+                                _ => ::cmdparse::CompletionResult::new_final(false),
                             }
                         }
                     }

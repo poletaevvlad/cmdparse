@@ -1,4 +1,4 @@
-use cmd_parser::{complete, Parsable};
+use cmdparse::{complete, Parsable};
 use std::collections::BTreeSet;
 
 macro_rules! test {

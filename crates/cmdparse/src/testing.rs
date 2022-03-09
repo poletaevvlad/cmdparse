@@ -1,6 +1,6 @@
 #![doc(hidden)]
 //! These macro are intended for testing the implementation in this crate and in the order crates
-//! that are part of the `cmd_parser` repository. Although these macros are public, they can be
+//! that are part of the `cmdparse` repository. Although these macros are public, they can be
 //! changed, removed, renamed at any point for any reason.
 
 #[doc(hidden)]

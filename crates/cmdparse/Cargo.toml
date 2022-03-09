@@ -1,10 +1,10 @@
 [package]
-name = "cmd-parser"
+name = "cmdparse"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-cmd-parser-derive = { path = "../cmd-parser-derive" }
+cmdparse-derive = { path = "../cmdparse-derive" }
 
 [dev-dependencies]
 tempdir = "0.3"

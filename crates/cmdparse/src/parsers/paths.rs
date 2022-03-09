@@ -136,7 +136,7 @@ mod tests {
 
     #[test]
     fn complete_suggestions() {
-        let dir = tempdir::TempDir::new("cmd_parser_tests").unwrap();
+        let dir = tempdir::TempDir::new("cmdparse_tests").unwrap();
         let mut path = dir.path().to_path_buf();
         path.push("inner");
         create_dir(&path).unwrap();
