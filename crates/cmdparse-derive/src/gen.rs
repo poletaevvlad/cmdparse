@@ -118,17 +118,14 @@ pub(crate) fn implementation(
     let type_generics = generics::usage(ctx, false);
     let ctx_generics = generics::context_usage(ctx);
     let trait_generics = generics::definition(ctx, true);
+    let visibility_mod = ctx.visibility_mod;
 
     quote! {
         #[derive(Default)]
-        struct #parser_name;
+        #visibility_mod struct #parser_name;
 
         impl #trait_generics ::cmdparse::Parser #ctx_generics for #parser_name #where_clause {
             type Value = #type_name #type_generics;
-
-            // fn create(ctx: #ctx_generic) -> Self {
-            //     #parser_name { #parsers_initialization }
-            // }
 
             #[allow(unreachable_code)]
             fn parse<'a>(
@@ -434,7 +431,12 @@ mod tests {
 
         #[test]
         fn with_generics() {
-            let mock_context = MockCodegenContext::default();
+            let mock_context = MockCodegenContext {
+                vis_modifier: syn::Visibility::Public(syn::VisPublic {
+                    pub_token: syn::parse_str("pub").unwrap(),
+                }),
+                ..Default::default()
+            };
             let generics = syn::parse2(quote! {<'a, T: Parsable<CmdParserCtx>>}).unwrap();
             let mut ctx = mock_context.context();
             ctx.context_type = Some(ContextType::Generic(Box::new(
@@ -458,7 +460,7 @@ mod tests {
 
             let expected = quote! {
                 #[derive(Default)]
-                struct WithGenericsParser;
+                pub struct WithGenericsParser;
 
                 impl<'a, CmdParserCtx: Send + Sync + Clone, T: Parsable<CmdParserCtx>> ::cmdparse::Parser<CmdParserCtx> for WithGenericsParser {
                     type Value = WithGenerics<'a, T>;

@@ -24,6 +24,7 @@ pub(crate) enum ContextType {
 }
 
 pub(crate) struct CodegenContext<'a> {
+    pub(crate) visibility_mod: &'a syn::Visibility,
     pub(crate) type_name: &'a syn::Ident,
     pub(crate) context_type: Option<ContextType>,
     pub(crate) generics: &'a syn::Generics,
@@ -33,6 +34,7 @@ pub(crate) struct CodegenContext<'a> {
 impl<'a> CodegenContext<'a> {
     pub(crate) fn from_derive_input(derive_input: &'a syn::DeriveInput) -> Self {
         CodegenContext {
+            visibility_mod: &derive_input.vis,
             type_name: &derive_input.ident,
             context_type: None,
             generics: &derive_input.generics,
@@ -58,14 +60,16 @@ impl<'a> CodegenContext<'a> {
 
 #[cfg(test)]
 pub(crate) struct MockCodegenContext {
-    type_name: syn::Ident,
-    generics: syn::Generics,
+    pub(crate) type_name: syn::Ident,
+    pub(crate) generics: syn::Generics,
+    pub(crate) vis_modifier: syn::Visibility,
 }
 
 #[cfg(test)]
 impl Default for MockCodegenContext {
     fn default() -> Self {
         Self {
+            vis_modifier: syn::Visibility::Inherited,
             type_name: format_ident!("MockType"),
             generics: syn::Generics::default(),
         }
@@ -76,6 +80,7 @@ impl Default for MockCodegenContext {
 impl MockCodegenContext {
     pub(crate) fn context(&self) -> CodegenContext<'_> {
         CodegenContext {
+            visibility_mod: &self.vis_modifier,
             type_name: &self.type_name,
             context_type: None,
             generics: &self.generics,
