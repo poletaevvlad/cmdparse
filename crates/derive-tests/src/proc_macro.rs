@@ -611,3 +611,37 @@ mod enum_alias_values {
         suggestions: ["rue"]
     });
 }
+
+mod enum_transparent_joins_suggestions {
+    use super::*;
+
+    #[derive(Debug, Parsable)]
+    enum First {
+        A1,
+        A2,
+        A3,
+        #[cmd(transparent_no_error)]
+        Number(i32),
+    }
+
+    #[derive(Debug, Parsable)]
+    enum Second {
+        A4,
+        A5,
+    }
+
+    #[derive(Debug, Parsable)]
+    enum WithTransparent {
+        #[cmd(transparent)]
+        First(First),
+        #[cmd(transparent)]
+        Second(Second),
+        A6,
+    }
+
+    test_complete!(complete_all, WithTransparent, "a" => {
+        consumed: false,
+        remaining: Some(Some(token!("a"))),
+        suggestions: ["1", "2", "3", "4", "5", "6"],
+    });
+}

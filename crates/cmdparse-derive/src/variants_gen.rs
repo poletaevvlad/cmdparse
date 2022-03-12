@@ -56,11 +56,19 @@ impl<'a> TransparentVariantView<'a> {
 
     fn gen_complete(&self, ctx: &CodegenContext) -> TokenStream {
         let complete_variant = gen_complete_struct(ctx, self.fields, None);
+        let return_check = if self.ignore_error {
+            None
+        } else {
+            Some(quote! {
+                if result.value_consumed {
+                    result.suggestions.extend(suggestions);
+                    return result
+                }
+            })
+        };
         quote! {
-            let result = (||{ #complete_variant })();
-            if result.value_consumed {
-                return result
-            }
+            let mut result = (||{ #complete_variant })();
+            #return_check
             suggestions.extend(result.suggestions);
         }
     }
