@@ -18,7 +18,11 @@ impl<'a> VariantView<'a> {
         quote! {
             #label => {
                 input = remaining;
-                #parse_variant
+                let result = (|| { #parse_variant })();
+                return result.map_err(|err| match err {
+                    error @ ::cmdparse::error::ParseFailure::Error(_) => error,
+                    ::cmdparse::error::ParseFailure::Unrecognized(unrecognized) => unrecognized.into_error().into(),
+                });
             }
         }
     }

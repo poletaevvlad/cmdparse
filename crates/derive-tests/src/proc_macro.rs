@@ -222,12 +222,20 @@ mod some_optional {
         "10 --opt 2 rest" => Ok(WithOptional(10, 2, false), Some(token!("rest")))
     );
     test_parse!(
+        has_usize_starts_with_opt, WithOptional,
+        "--opt 2 10 rest" => Ok(WithOptional(10, 2, false), Some(token!("rest")))
+    );
+    test_parse!(
         has_attr_with_value, WithOptional,
         "10 --yes rest" => Ok(WithOptional(10, 5, true), Some(token!("rest")))
     );
     test_parse!(
         has_all_fields, WithOptional,
         "10 --yes --opt 7 rest" => Ok(WithOptional(10, 7, true), Some(token!("rest")))
+    );
+    test_parse!(
+        has_all_fields_start_with_opt, WithOptional,
+        "--yes 10 --opt 7 rest" => Ok(WithOptional(10, 7, true), Some(token!("rest")))
     );
     test_parse!(
         stops_after_required_finished, WithOptional,
@@ -261,6 +269,59 @@ mod some_optional {
         consumed: true,
         remaining: Some(Some(token!(--"fa"))),
         suggestions: ["lse"],
+    });
+}
+
+mod some_optional_enum {
+    use super::*;
+
+    #[derive(Debug, PartialEq, Eq, Parsable)]
+    enum WithOptional {
+        Variant(
+            u16,
+            #[cmd(attr(opt), default = "5")] usize,
+            #[cmd(attr(yes = "true", false = "false"))] bool,
+        ),
+    }
+
+    test_parse!(
+        not_enough_tokens, WithOptional,
+        "variant" => Error(ParseError::token_required().expected("integer"))
+    );
+    test_parse!(
+        all_optional_missing, WithOptional,
+        "variant 10" => Ok(WithOptional::Variant(10, 5, false), None)
+    );
+    test_parse!(
+        has_usize, WithOptional,
+        "variant 10 --opt 2 rest" => Ok(WithOptional::Variant(10, 2, false), Some(token!("rest")))
+    );
+    test_parse!(
+        has_attr_with_value, WithOptional,
+        "variant 10 --yes rest" => Ok(WithOptional::Variant(10, 5, true), Some(token!("rest")))
+    );
+    test_parse!(
+        stops_after_required_finished, WithOptional,
+        "variant 10 --unknown --yes rest" => Ok(WithOptional::Variant(10, 5, false), Some(token!(--"unknown")))
+    );
+    test_parse!(
+        keeps_taking_tokens, WithOptional,
+        "variant 10 --yes --unknown rest" => Ok(WithOptional::Variant(10, 5, true), Some(token!(--"unknown")))
+    );
+    test_parse!(
+        unrecognized_attr, WithOptional,
+        "variant --unknown 10 rest" => Error(ParseError::unknown(token!(--"unknown")))
+    );
+
+    test_complete!(complete_attr_dashes_only, WithOptional, "variant --" => {
+        consumed: false,
+        remaining: Some(Some(token!(--""))),
+        suggestions: ["false", "opt", "yes"],
+    });
+    test_complete!(complete_attr_partial, WithOptional, "variant --y" => {
+        consumed: false,
+        remaining: Some(Some(token!(--"y"))),
+        suggestions: ["es"],
     });
 }
 
@@ -644,4 +705,18 @@ mod enum_transparent_joins_suggestions {
         remaining: Some(Some(token!("a"))),
         suggestions: ["1", "2", "3", "4", "5", "6"],
     });
+}
+
+mod not_parsable_ignored {
+    use super::*;
+
+    #[derive(Debug, Default)]
+    struct NotParsable;
+
+    #[derive(Debug, Parsable)]
+    struct Test {
+        parsable: u16,
+        #[cmd(default)]
+        not_parsable: NotParsable,
+    }
 }

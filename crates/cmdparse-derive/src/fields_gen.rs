@@ -26,10 +26,6 @@ impl<'a> FieldView<'a> {
             } => {
                 let var_ident = self.var_ident();
                 let parser_ident = parser.ident();
-                let unrecognized_variant = match *position {
-                    0 => quote! { return Err(unrecognized.into()) },
-                    _ => quote! { unrecognized },
-                };
                 let parse_ctx = ctx.parse_context_ident();
 
                 quote! {
@@ -42,7 +38,7 @@ impl<'a> FieldView<'a> {
                             continue
                         }
                         Err(error @ ::cmdparse::error::ParseFailure::Error(_)) => return Err(error),
-                        Err(::cmdparse::error::ParseFailure::Unrecognized(unrecognized)) => #unrecognized_variant,
+                        Err(::cmdparse::error::ParseFailure::Unrecognized(unrecognized)) => unrecognized,
                     }
                 }
             }
