@@ -366,9 +366,10 @@ pub trait Parser<Ctx>: Default {
     /// instructing how the parent parser should proceed with suggestions generation. If the parser
     /// calls multiple parsers' `complete` in a row, it should collect the results they produce.
     ///
-    /// Note, that `complete` produces suggestions only for the last token in the stream if and
+    /// Note, that `complete` produces suggestions for the last token in the stream (if and
     /// only if there are no characters following it, so only for tokens for which the remaining
-    /// stream's [`is_all_consumed`](TokenStream::is_all_consumed) returns `true`.
+    /// stream's [`is_all_consumed`](TokenStream::is_all_consumed) returns `true`) or when the end
+    /// of stream is reached.
     ///
     /// Parser should return:
     ///

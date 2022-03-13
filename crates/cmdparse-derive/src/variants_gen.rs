@@ -132,7 +132,7 @@ pub(crate) fn gen_complete_enum(
         const VARIANT_NAMES: &[&str] = &[#(#variant_names),*];
         let mut suggestions = ::std::collections::BTreeSet::new();
         match input.take() {
-            None | Some(Err(_)) => return ::cmdparse::CompletionResult::new_final(false),
+            Some(Err(_)) => return ::cmdparse::CompletionResult::new_final(false),
             Some(Ok((::cmdparse::tokens::Token::Text(text), remaining))) => {
                 let text = text.parse_string();
                 if remaining.is_all_consumed() {
@@ -145,6 +145,9 @@ pub(crate) fn gen_complete_enum(
                 }
             }
             Some(_) => {}
+            None => return ::cmdparse::CompletionResult::new_final(false).add_suggestions(
+                VARIANT_NAMES.iter().cloned().map(::std::borrow::Cow::Borrowed),
+            ),
         }
         #(#transparent_complete)*
         ::cmdparse::CompletionResult::new(input, false).add_suggestions(suggestions)

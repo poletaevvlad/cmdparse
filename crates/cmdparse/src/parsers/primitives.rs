@@ -333,7 +333,10 @@ impl<Ctx> Parser<Ctx> for BooleanParser {
             }
             Some(Ok((Token::Text(_), remaining))) => CompletionResult::new(remaining, true),
             Some(Ok((Token::Attribute(_), _))) => CompletionResult::new(input, false),
-            Some(Err(_)) | None => CompletionResult::new_final(false),
+            None => {
+                CompletionResult::new_final(false).add_suggestions(["false".into(), "true".into()])
+            }
+            Some(Err(_)) => CompletionResult::new_final(false),
         }
     }
 }
@@ -509,7 +512,7 @@ mod tests {
         test_complete!(complete_empty_string, bool, "" => {
             consumed: false,
             remaining: None,
-            suggestions: [],
+            suggestions: ["true", "false"],
         });
 
         test_complete!(complete_atribute, bool, "--unknown abc" => {

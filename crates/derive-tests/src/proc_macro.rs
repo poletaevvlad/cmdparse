@@ -461,7 +461,7 @@ mod enum_simple {
     test_complete!(complete_empty, Enum, "" => {
         consumed: false,
         remaining: None,
-        suggestions: [],
+        suggestions: ["first", "second"],
     });
     test_complete!(complete_partial_variant, Enum, "fir" => {
         consumed: false,
