@@ -1,6 +1,23 @@
+[package]
+name = "cmdparse"
+version = "0.1.0"
+authors = ["Vlad Poletaev <poletaev.vladislav@gmail.com>"]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/poletaevvlad/cmdparse"
+documentation = "https://docs.rs/cmdparse/"
+categories = ["parser-implementations"]
+readme = "README.md"
+
+[dependencies]
+cmdparse-derive = { path = "./derive" }
+
+[dev-dependencies]
+tempdir = "0.3"
+
+# Example dependencies
+rustyline = "9.1.0"
+smallvec = "1.8.0"
+
 [workspace]
-members = [
-    "crates/cmdparse",
-    "crates/cmdparse-derive",
-    "crates/derive-tests",
-]
+members = ["derive", "derive-tests"]
