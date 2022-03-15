@@ -150,7 +150,12 @@ impl<'a> fmt::Display for RawLexeme<'a> {
 /// text token is to enclose an empty string in quotation marks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Token<'a> {
+    /// The non-attribute token (without preceding `--`) containing a [`RawLexeme`] referencing a
+    /// non-empty slice.
     Text(RawLexeme<'a>),
+
+    /// A token referencing the attribute's name (does not include preceding `--`). The slice it
+    /// references may be empty.
     Attribute(RawLexeme<'a>),
 }
 
