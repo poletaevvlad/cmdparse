@@ -1,0 +1,17 @@
+name: "Tests and linting"
+on: ["push"]
+
+jobs:
+  test_and_lint:
+    name: Test and lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+      - run: cargo test --all
+      - run: cargo fmt --all
+      - run: cargo clippy --all
+      - run: ./.github/check-versions.sh

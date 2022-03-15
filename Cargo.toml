@@ -10,7 +10,7 @@ categories = ["parser-implementations"]
 readme = "README.md"
 
 [dependencies]
-cmdparse-derive = { path = "./derive" }
+cmdparse-derive = { path = "./derive", version = "=0.1.0" }
 
 [dev-dependencies]
 tempdir = "0.3"
