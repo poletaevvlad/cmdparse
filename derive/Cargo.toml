@@ -1,7 +1,11 @@
 [package]
 name = "cmdparse-derive"
 version = "0.1.0"
+authors = ["Vlad Poletaev <poletaev.vladislav@gmail.com>"]
 edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/poletaevvlad/cmdparse"
+readme = "README.md"
 
 [lib]
 proc-macro = true
