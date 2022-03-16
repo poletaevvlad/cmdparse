@@ -51,7 +51,9 @@ impl<'c> Parser<ParsingContext<'c>> for KeyParser {
             }
             Some(Ok((Token::Text(_), remaining))) => CompletionResult::new(remaining, true),
             Some(Ok((Token::Attribute(_), _))) => CompletionResult::new(input, false),
-            Some(Err(_)) | None => CompletionResult::new_final(false),
+            Some(Err(_)) => CompletionResult::new_final(false),
+            None => CompletionResult::new_final(false)
+                .add_suggestions(ctx.keys().map(|key| key.0.to_string().into())),
         }
     }
 }
