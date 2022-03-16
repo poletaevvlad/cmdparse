@@ -15,10 +15,10 @@ commands entered interactively inside the application. Of course, you are not li
 use case and free to use `cmdparse` as a generic data deserialization framework in any way
 you like.
 
-## Example
+## Examples
 
 Let’s consider the following example. It defines a struct `MailSendCommand` and derives
-[`Parsable`] trait for it. This is enough to be able to parse it.
+`Parsable` trait for it. This is enough to be able to parse it.
 
 ```rust
 use cmdparse::{Parsable, parse};
@@ -44,16 +44,16 @@ assert_eq!(result, MailSendCommand {
 This example demonstrates several features of `cmdparse`:
 
  * Parsing functionality can be automatically derived for an arbitrary struct or enum as long
-   as the inner types are [`Parsable`] or there is an appropriate [`Parser`] for them. (To
+   as the inner types are `Parsable` or there is an appropriate `Parser` for them. (To
    learn about the distinction between parsable and parser, read documentation for these traits).
  * Derived parser is configurable: you may make fields either required or optional. Optional
    fields can be specified via a name attribute (`--` token). They can have a default value
    explicitly specified (see default attribute on the `subject` field) or not (`to` field
-   defaults to an empty vector, as per its [`Default`] implementation)
+   defaults to an empty vector, as per its `Default` implementation)
  * Parsable values can contain nested parsable values: `MailSendCommand` is parsable, it
-   contains a [`Vec`] which is parsable and in repeatedly parses [`String`]s that are parsable.
+   contains a `Vec` which is parsable and in repeatedly parses `String`s that are parsable.
    Note how `cmdparse` recognized that the list of email addresses finished when it
-   encountered the attribute that neither [`String`] nor [`Vec`] recognizes.
+   encountered the attribute that neither `String` nor `Vec` recognizes.
 
 `cmdparse` can generate completion suggestions:
 
@@ -61,13 +61,12 @@ This example demonstrates several features of `cmdparse`:
 use cmdparse::complete;
 use std::collections::BTreeSet;
 
-#
 let suggestions = complete::<_, MailSendCommand>("\"Hello, world\" --", ());
 assert_eq!(suggestions, BTreeSet::from(["to".into(), "subject".into()]));
 ```
 
 It also supports parsing enums. In case of enum, it expects a discriminator (automatically
-converted into kebab-case by the [`Parsable`] derive macro):
+converted into kebab-case by the `Parsable` derive macro):
 
 ```rust
 use cmdparse::{parse, Parsable};
@@ -127,7 +126,7 @@ structure, with parenthesis: `(` and `)`. This way, users can express a value `v
 vec![3, 4, 5]]` as `(1 2) (3 4 5)`.
 
 More details about how the tokenization and the parsing algorithm are documented in the
-[`tokens`] module’s and [`Parser`] trait’s documentation.
+`tokens` module’s and `Parser` trait’s documentation.
 
 ## License
 

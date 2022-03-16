@@ -14,7 +14,7 @@
 //! use case and free to use `cmdparse` as a generic data deserialization framework in any way
 //! you like.
 //!
-//! # Example
+//! # Examples
 //!
 //! Let’s consider the following example. It defines a struct `MailSendCommand` and derives
 //! [`Parsable`] trait for it. This is enough to be able to parse it.
@@ -72,7 +72,6 @@
 //! #    #[cmd(attr(to))]
 //! #    to: Vec<String>,
 //! # }
-//! #
 //! # fn main() -> Result<(), cmdparse::error::ParseError<'static>> {
 //! let suggestions = complete::<_, MailSendCommand>("\"Hello, world\" --", ());
 //! assert_eq!(suggestions, BTreeSet::from(["to".into(), "subject".into()]));
