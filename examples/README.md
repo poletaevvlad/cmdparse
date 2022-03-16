@@ -1,9 +1,11 @@
 # Examples
 
-There are several examples that demonstrates how to use `cmdparse`. These are more complete then
-examples provided in the documentation, as they include handling user input from stdin using
-[`rustyline`](https://github.com/kkawakam/rustyline) crate. Note that `rustyline` is not required
-to use `cmdparse`, it was chosen for easier demonstration of completion capabilities.
+There are several examples that demonstrate how to use `cmdparse`. These are
+more complete then examples provided in the documentation, as they include
+handling user input from stdin using
+[`rustyline`](https://github.com/kkawakam/rustyline) crate. Note that
+`rustyline` is not required to use `cmdparse`, it was chosen for easier
+demonstration of completion capabilities.
 
 
 ## `key_value`
@@ -24,16 +26,16 @@ storage> get-substr o 3 --start 3
 gen
 ```
 
-This example program demonstrates how `cmdparse` can be used to build redis-like in-memory
-key-value storage with an interactive CLI interface.
+This example program demonstrates how `cmdparse` can be used to build
+redis-like in-memory key-value storage with an interactive CLI interface.
 
 **Demonstrated functionality**:
 
 * *Custom parser with a custom context*: a custom context (in this case a
-  simple immutable reference to the hash map is suffitient) along with a custom parser for automatic
-  completion of keys.
+  simple immutable reference to the hash map is sufficient) along with a custom
+  parser for automatic completion of keys.
 * Usage of `Parsable` derive macro for a user-defined enum.
-* Accepting the user input with [`rustyline`] with support for autocompletion.
+* Accepting the user input with `rustyline` with support for autocompletion.
 
 
 ## `arithmetic`
@@ -46,7 +48,7 @@ $ cargo run --example arithmetic
 << 3.1415927300133055
 ```
 
-This example demonstrates less then conventional usage of `cmdparse`: it
+This example demonstrates less than conventional usage of `cmdparse`: it
 evaluates an expression written in the [Polish (prefix)
 notation](https://en.wikipedia.org/wiki/Polish_notation) as part of the parsing
 process.
@@ -70,13 +72,15 @@ $ cargo run --example smallvec
 << []
 ```
 
-This example demonstrates how to implement a parser for a collection that is defined in a foreign
-trait. The difficulty lies in the fact that it's not possible to define `ParsableCollection` trait
-on such type directly because neither `ParsableCollection` trait nor the collection type itself are
-defined in the user's crate.
+This example demonstrates how to implement a parser for a collection that is
+defined in a foreign trait. The difficulty lies in the fact that it's not
+possible to define `ParsableCollection` trait on such type directly because
+neither `ParsableCollection` trait nor the collection type itself are defined
+in the user's crate.
 
 **Demonstrated functionality**:
 
-* Using `ParsableCollection` trait to implement a parser for a custom linear collection.
-* Usinf `ParsableTransformation` along with newtype pattern to easily convert between type when
-  parsing.
+* Using `ParsableCollection` trait to implement a parser for a custom linear
+  collection.
+* Using `ParsableTransformation` along with newtype pattern to easily convert
+  between type when parsing.

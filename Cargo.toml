@@ -2,6 +2,7 @@
 name = "cmdparse"
 version = "0.1.0"
 authors = ["Vlad Poletaev <poletaev.vladislav@gmail.com>"]
+description = "Parsing user's commands into arbitrary Rust types"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/poletaevvlad/cmdparse"

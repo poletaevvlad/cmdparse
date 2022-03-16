@@ -1,4 +1,4 @@
-[![Github](https://img.shields.io/github/last-commit/poletaevvlad/cmdparse "Documentation")](https://github.com/poletaevvlad/cmdparse) [![MIT/Apache 2.0](https://img.shields.io/crates/l/cmdparse "MIT/Apache 2.0")](https://crates.io/cmdparse) [![Crates.io](https://img.shields.io/crates/v/cmdparse "Crates.io")](https://crates.io/cmdparse) [![Documentation](https://img.shields.io/docsrs/cmdparse "Documentation")](https://docs.rs/cmdparse)
+[![Github](https://img.shields.io/github/last-commit/poletaevvlad/cmdparse "Documentation")](https://github.com/poletaevvlad/cmdparse) [![MIT/Apache 2.0](https://img.shields.io/crates/l/cmdparse "MIT/Apache 2.0")](https://crates.io/crates/cmdparse) [![Crates.io](https://img.shields.io/crates/v/cmdparse "Crates.io")](https://crates.io/crates/cmdparse) [![Documentation](https://img.shields.io/docsrs/cmdparse "Documentation")](https://docs.rs/cmdparse)
 
 # cmdparse
 
