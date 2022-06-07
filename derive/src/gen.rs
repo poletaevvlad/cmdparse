@@ -161,8 +161,8 @@ mod tests {
     use quote::quote;
 
     fn assert_tokens_eq(stream1: TokenStream, stream2: TokenStream) {
-        let stream1_formatted = format!("{}", stream1).replace(" ", "");
-        let stream2_formatted = format!("{}", stream2).replace(" ", "");
+        let stream1_formatted = format!("{}", stream1).replace(' ', "");
+        let stream2_formatted = format!("{}", stream2).replace(' ', "");
         assert_eq!(stream1_formatted, stream2_formatted);
     }
 

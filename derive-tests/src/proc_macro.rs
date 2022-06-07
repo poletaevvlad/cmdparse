@@ -713,6 +713,7 @@ mod not_parsable_ignored {
     #[derive(Debug, Default)]
     struct NotParsable;
 
+    #[allow(dead_code)]
     #[derive(Debug, Parsable)]
     struct Test {
         parsable: u16,

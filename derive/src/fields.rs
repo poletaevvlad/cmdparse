@@ -96,7 +96,7 @@ impl<'a> FieldsSet<'a> {
             let attributes = FieldAttributes::from_attributes(field.attrs.iter())?;
             let parser = match attributes.parser {
                 None => Parser::FromParsable(&field.ty),
-                Some(parser) => Parser::Explicit(parser),
+                Some(parser) => Parser::Explicit(Box::new(parser)),
             };
 
             let default = attributes.default.map(|default| {
@@ -349,7 +349,7 @@ mod tests {
                 } => write!(
                     &mut string,
                     "Fixed({}, {:?}, {})",
-                    quote! {#value}.to_string(),
+                    quote! {#value},
                     default,
                     name,
                 )
