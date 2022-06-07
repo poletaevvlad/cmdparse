@@ -135,7 +135,10 @@ impl<'a> FieldView<'a> {
                     }
                 }
             }
-            FieldView::Fixed { name, .. } => quote! { #name => continue, },
+            FieldView::Fixed { name, .. } => quote! { #name => {
+                input = remaining;
+                continue
+            }},
             _ => TokenStream::new(),
         }
     }
