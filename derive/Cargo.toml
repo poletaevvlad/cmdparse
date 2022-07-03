@@ -1,6 +1,6 @@
 [package]
 name = "cmdparse-derive"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Vlad Poletaev <poletaev.vladislav@gmail.com>"]
 description = "Derive macro implementation for cmdparse."
 edition = "2021"

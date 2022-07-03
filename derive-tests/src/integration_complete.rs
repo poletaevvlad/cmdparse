@@ -163,3 +163,22 @@ test!(
     "variant-a2 variant-a1 variant-" => ["b1", "b2", "a1", "a2"],
     "variant-a2 variant-a1 variant-b1 variant-" => ["a1", "a2"],
 );
+
+#[derive(Parsable)]
+struct EnumWithField(
+    EnumFirst,
+    #[cmd(attr(first = "true", second = "false"))] bool,
+);
+
+test!(
+    enum_with_field, EnumWithField,
+    "vari" => ["ant-a1", "ant-a2"],
+    "variant-a1" => [],
+    "variant-a2 " => [],
+    "variant-a1 --" => ["first", "second"],
+    "--" => ["first", "second"],
+    "--fir" => ["st"],
+    "--first" => [],
+    "--first " => ["variant-a1", "variant-a2"],
+    "--first vari" => ["ant-a1", "ant-a2"],
+);

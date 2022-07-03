@@ -4,7 +4,7 @@ use quote::{format_ident, quote};
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub(crate) enum Parser<'a> {
-    Explicit(syn::Type),
+    Explicit(Box<syn::Type>),
     FromParsable(&'a syn::Type),
 }
 

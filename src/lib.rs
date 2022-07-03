@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/cmdparse/0.1.0")]
+#![doc(html_root_url = "https://docs.rs/cmdparse/0.1.1")]
 #![warn(missing_docs)]
 
 //! `cmdparse` is, as the name suggests, parses user commands into arbitrary Rust types.
